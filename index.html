@@ -258,6 +258,7 @@ function todayView(){var t=today();var d=new Date();
   S.fin.forEach(function(e){if(e.date===t){if(e.type==='in')inc+=e.amount;else out+=e.amount}});
   var mins=S.logs.filter(function(l){return l.date===t}).reduce(function(a,l){return a+(l.min||0)},0);
   var h='<div><h2 style="font-size:22px">'+DAYS[d.getDay()]+', '+human(t)+'</h2><div class="muted small">Layihələr strategiya sırasına görə düzülüb</div></div>';
+  h+='<div class="row"><button class="btn p" data-act="report">📋 Claude üçün hesabat</button></div>';
   h+='<div class="grid g4"><div class="stat"><span>Bu gün gəlir</span><b class="num good">'+money(inc)+'</b></div><div class="stat"><span>Bu gün xərc</span><b class="num bad">'+money(out)+'</b></div><div class="stat"><span>Tamamlanan</span><b class="num">'+dn+'</b></div><div class="stat"><span>İş vaxtı</span><b class="num">'+(mins?Math.floor(mins/60)+' saat '+(mins%60)+' dəq':'0')+'</b></div></div>';
   ps.forEach(function(p){h+=todayCard(p,t)});
   if(!ps.length)h+='<div class="card empty">Aktiv layihə yoxdur. Layihələr bölməsindən statusu “İşləyir” və ya “Planlaşdırma” edin.</div>';
@@ -410,13 +411,68 @@ function schedulePush(){if(!sb||!session)return;clearTimeout(pushT);pushT=setTim
 document.addEventListener('visibilitychange',function(){if(!document.hidden&&sb&&session){pull().then(function(){if(!UI.modal&&!document.activeElement.matches('input,textarea,select'))render()})}});
 
 /* ---------- settings modal ---------- */
-function modalView(){var c=cfg();var h='<div class="modalbg" data-act="closemodal"><div class="modal" data-stop="1"><div class="row"><h2 class="grow">Ayarlar</h2><button class="btn sm" data-act="closemodal">Bağla</button></div>';
+  /* ---------- Claude üçün hesabat ---------- */
+function clip(s,n){s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1)+'…':s}
+function hm(m){return m?Math.floor(m/60)+' saat '+(m%60)+' dəq':'0'}
+function buildReport(){
+  var t=today(),f=addDays(t,-6),L=[];
+  function inR(d){return !!d&&d>=f&&d<=t}
+  var tot=finSum(f,t),tc=toolCostAll(f,t),allMin=0;
+  S.logs.forEach(function(l){if(inR(l.date))allMin+=l.min||0});
+  L.push('CRM HESABATI · son 7 gün ('+human(f)+' – '+human(t)+')');
+  L.push('Ümumi: gəlir '+money(tot.i)+', xərc '+money(tot.o)+', abunə '+money(tc)+', xalis '+money(tot.i-tot.o-tc)+', iş vaxtı '+hm(allMin));
+  var ps=sortedProjects(true).filter(function(p){return !p.archived}),stuck=[];
+  L.push('');L.push('LAYİHƏLƏR ÜZRƏ');
+  ps.forEach(function(p){
+    var pr=progress(p.id);
+    var done=S.done.filter(function(d){return d.pid===p.id&&inR(d.date)});
+    var logs=S.logs.filter(function(l){return l.pid===p.id&&inR(l.date)}).sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:(a.ts||0)-(b.ts||0)});
+    var fins=S.fin.filter(function(e){return e.pid===p.id&&inR(e.date)}).sort(function(a,b){return a.date<b.date?-1:1});
+    var x=finSum(f,t,p.id),c=toolCost(p,f,t);
+    var open=tasksOf(p.id).filter(function(k){return !isDone(k)});
+    var once=open.filter(function(k){return !k.repeat}),daily=open.filter(function(k){return k.repeat});
+    L.push('');
+    L.push('■ '+p.name+' ['+p.status+'] · '+pr.d+'/'+pr.n+' tapşırıq tamamdır');
+    if(p.summary)L.push('  Təsvir: '+clip(p.summary,140));
+    var cnt={},order=[];done.forEach(function(d){if(!cnt[d.title]){cnt[d.title]=0;order.push(d.title)}cnt[d.title]++});
+    L.push('  Görülənlər:'+((order.length||logs.length)?'':' yoxdur'));
+    order.forEach(function(k){L.push('   ✓ '+clip(k,90)+(cnt[k]>1?' ×'+cnt[k]:''))});
+    logs.forEach(function(l){L.push('   • '+short(l.date)+': '+clip(l.text,110)+(l.min?' ('+l.min+' dəq)':''))});
+    L.push('  Pul: gəlir '+money(x.i)+', xərc '+money(x.o)+(c?', abunə '+money(c):''));
+    fins.slice(0,5).forEach(function(e){L.push('   '+(e.type==='in'?'+':'−')+money(e.amount)+(e.note?' · '+clip(e.note,60):''))});
+    if(fins.length>5)L.push('   … daha '+(fins.length-5)+' hərəkət');
+    L.push('  Açıq tapşırıqlar ('+once.length+'):'+(once.length?'':' yoxdur'));
+    once.slice(0,8).forEach(function(k){var m='';if(k.prio===1)m+=' [yüksək]';if(k.due)m+=' [son tarix '+short(k.due)+(k.due<t?', gecikib':'')+']';L.push('   ○ '+clip(k.title,90)+m)});
+    if(once.length>8)L.push('   … daha '+(once.length-8)+' tapşırıq');
+    if(daily.length)L.push('  Gündəlik: '+daily.map(function(k){return clip(k.title,40)}).join('; '));
+    once.forEach(function(k){
+      if(k.due&&k.due<t)stuck.push(p.name+': “'+clip(k.title,70)+'” '+diffDays(k.due,t)+' gün gecikib');
+      else if(k.prio===1&&k.ts&&k.ts<Date.now()-7*864e5)stuck.push(p.name+': “'+clip(k.title,70)+'” yüksək prioritetlidir, 7+ gündür açıqdır');
+    });
+    if((p.status==='İşləyir'||p.status==='Planlaşdırma')&&!done.length&&!logs.length&&!fins.length&&once.length)
+      stuck.push(p.name+': son 7 gündə heç bir hərəkət yoxdur ('+once.length+' açıq tapşırıq)');
+  });
+  L.push('');L.push('İLİŞƏN İŞLƏR');
+  if(stuck.length)stuck.forEach(function(s){L.push('! '+s)});else L.push('Görünən ilişən iş yoxdur.');
+  if(S.note&&S.note.trim()){L.push('');L.push('Strategiya qeydi: '+clip(S.note,300))}
+  return L.join('\n')}
+function reportModal(){return '<div class="modalbg" data-act="closemodal"><div class="modal" data-stop="1"><div class="row"><h2 class="grow">Claude üçün hesabat</h2><button class="btn sm" data-act="closemodal">Bağla</button></div>'+
+  '<p class="small muted">Son 7 günün qısa xülasəsi. Kopyalayıb Claude söhbətinə yapışdırın.</p>'+
+  '<textarea id="rep-text" readonly style="width:100%;height:46vh;font-size:13px;line-height:1.45">'+esc(UI.report||'')+'</textarea>'+
+  '<div class="row" style="margin-top:8px"><button class="btn p" data-act="copyreport">Kopyala</button><button class="btn" data-act="report">Yenilə</button></div>'+
+  (UI.msg?'<p class="small good">'+esc(UI.msg)+'</p>':'')+'</div></div>'}
+function copyReport(){
+  function ok(){UI.msg='Kopyalandı ✓ İndi Claude söhbətinə yapışdırın.';render()}
+  function fb(){var ta=el('rep-text');var done=false;try{ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);done=document.execCommand('copy')}catch(x){}
+    if(done)ok();else{UI.msg='Avtomatik kopyalanmadı. Mətn seçilib: əl ilə kopyalayın (uzun basıb “Kopyala”).';render();var t2=el('rep-text');if(t2){t2.focus();t2.select()}}}
+  try{navigator.clipboard.writeText(UI.report||'').then(ok,fb)}catch(x){fb()}}
+function modalView(){if(UI.modal==='report')return reportModal();var c=cfg();var h='<div class="modalbg" data-act="closemodal"><div class="modal" data-stop="1"><div class="row"><h2 class="grow">Ayarlar</h2><button class="btn sm" data-act="closemodal">Bağla</button></div>';
   h+='<div><h3 style="font-size:15px">Cihazlar arası sinxron (Supabase)</h3>';
   if(!c.url||!c.key){h+='<p class="muted small">Telefon və kompüterdə eyni məlumatı görmək üçün Supabase layihəsinin ünvanını və anon açarını yazın.</p><label class="f">Project URL<input type="url" id="sb-url" placeholder="https://xxxx.supabase.co"></label><label class="f" style="margin-top:6px">anon public key<input type="text" id="sb-key"></label><div class="row" style="margin-top:8px"><button class="btn p" data-act="sbsave">Saxla</button></div>'}
   else if(!session){h+='<label class="f">Email<input type="email" id="sb-mail" autocomplete="username"></label><label class="f" style="margin-top:6px">Parol<input type="password" id="sb-pass" autocomplete="current-password"></label><div class="row" style="margin-top:8px"><button class="btn p" data-act="sblogin">Giriş</button><button class="btn" data-act="sbsignup">Hesab yarat</button><button class="btn ghost" data-act="sbreset">Ayarı sil</button></div>'}
   else{h+='<p class="small">Daxil olunub: <b>'+esc(session.user.email)+'</b></p><div class="row"><button class="btn p" data-act="sbsync">İndi sinxronla</button><button class="btn" data-act="sblogout">Çıxış</button></div>'}
   if(UI.msg)h+='<p class="small bad">'+esc(UI.msg)+'</p>';
-  h+='</div><div><h3 style="font-size:15px">Ehtiyat nüsxə</h3><div class="row" style="margin-top:6px"><button class="btn" data-act="export">Faylı yüklə</button><button class="btn" data-act="copyjson">Kopyala</button><label class="btn" style="cursor:pointer">Fayldan bərpa et<input type="file" accept=".json,application/json" data-file="import" hidden></label></div><p class="small muted">Bərpa cari məlumatı əvəz edir.</p></div></div></div>';
+  h+='</div><div><h3 style="font-size:15px">Ehtiyat nüsxə</h3><div class="row" style="margin-top:6px"><button class="btn" data-act="report">Claude üçün hesabat</button><button class="btn" data-act="export">Faylı yüklə</button><button class="btn" data-act="copyjson">Kopyala</button><label class="btn" style="cursor:pointer">Fayldan bərpa et<input type="file" accept=".json,application/json" data-file="import" hidden></label></div><p class="small muted">Bərpa cari məlumatı əvəz edir.</p></div></div></div>';
   return h}
 
 /* ---------- events ---------- */
@@ -473,7 +529,9 @@ function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;
   case 'period':UI.period=v;break;
   case 'applyrec':sortedProjects(true).filter(function(p){return !p.archived}).sort(function(a,b){return score(b)-score(a)}).forEach(function(p,i){p.order=i+1});save();break;
   case 'pup':case 'pdown':var l=sortedProjects(true).filter(function(p){return !p.archived});var i=l.map(function(p){return p.id}).indexOf(id);var j=i+(a==='pup'?-1:1);if(j>=0&&j<l.length){var o=l[i].order;l[i].order=l[j].order;l[j].order=o;save()}break;
-  case 'settings':UI.modal=true;UI.msg='';break;
+ case 'settings':UI.modal=true;UI.msg='';break;
+  case 'report':UI.report=buildReport();UI.modal='report';UI.msg='';break;
+  case 'copyreport':copyReport();re=false;break;
   case 'closemodal':UI.modal=false;break;
   case 'sbsave':localStorage&&lsSet(LSC,JSON.stringify({url:val('sb-url').trim(),key:val('sb-key').trim()}));sbStart();break;
   case 'sbreset':lsSet(LSC,'{}');sb=null;session=null;syncState='local';break;
