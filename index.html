@@ -128,6 +128,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 h2{letter-spacing:-.015em}
 @media (prefers-reduced-motion:no-preference){.btn,.chk,.sub button,nav.tabs button{transition:background .15s,box-shadow .15s,border-color .15s}}
 </style>
+<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png">
 </head><body>
 <div id="app"></div>
 <div id="modal" hidden></div>
@@ -161,9 +162,9 @@ function money(n){n=Math.round(n*100)/100;var neg=n<0;var p=Math.abs(n).toFixed(
 function el(id){return document.getElementById(id)}
 
 /* ---------- state ---------- */
-function empty(){return {v:1,updatedAt:0,projects:[],tasks:[],logs:[],fin:[],done:[],note:''}}
+function empty(){return {v:1,updatedAt:0,projects:[],tasks:[],logs:[],fin:[],done:[],orders:[],note:''}}
 function norm(s){var e=empty();for(var k in e){if(s[k]===undefined)s[k]=e[k]}
-  ['projects','tasks','logs','fin','done'].forEach(function(k){if(!Array.isArray(s[k]))s[k]=[]});
+  ['projects','tasks','logs','fin','done','orders'].forEach(function(k){if(!Array.isArray(s[k]))s[k]=[]});
   s.projects.forEach(function(p,i){p.sections=p.sections||[];p.links=p.links||[];p.tools=p.tools||[];p.sc=p.sc||{};if(p.order==null)p.order=i+1;p.status=p.status||'Planlaşdırma';p.color=p.color||COLORS[i%COLORS.length]});
   return s}
 function load(){var raw=lsGet(LS);if(raw){try{return norm(JSON.parse(raw))}catch(e){}}
@@ -212,11 +213,13 @@ function newProject(){var n=S.projects.length;var p={id:uid(),name:'Yeni layihə
 function ask(key){if(UI.confirm===key){UI.confirm=null;return true}UI.confirm=key;return false}
 
 /* ---------- render ---------- */
-var TABS=[['today','Bu gün'],['projects','Layihələr'],['finance','Maliyyə'],['strategy','Strategiya'],['archive','Arxiv']];
+var TABS=[['today','Bu gün'],['projects','Layihələr'],['finance','Maliyyə'],['orders','Sifarişlər'],['strategy','Strategiya'],['archive','Arxiv']];
 function render(){
   var sy=window.scrollY;var app=el('app');
+  if(LOCK){app.innerHTML='<div class="card" style="max-width:320px;margin:20vh auto"><h2>🔒 Mənim CRM</h2><input type="password" id="pin-i" inputmode="numeric" data-enter="unlock" placeholder="PIN" style="margin-top:10px">'+(UI.pinErr?'<p class="small bad">Yanlış PIN</p>':'')+'<div class="row" style="margin-top:10px"><button class="btn p" data-act="unlock">Aç</button></div></div>';el('modal').hidden=true;return}
   var h='<div class="hdr"><h1>Mənim CRM</h1>'+syncPill()+'<button class="iconbtn" data-act="settings" aria-label="Ayarlar">⚙</button></div>';
   h+='<main>'+view()+'</main>';
+  h+=UI.undoOn?'<div class="card" style="position:fixed;left:12px;right:12px;bottom:76px;z-index:40;display:flex;gap:10px;align-items:center"><span class="grow">Silindi.</span><button class="btn p sm" data-act="undo">Geri al</button></div>':'';
   h+='<nav class="tabs">'+TABS.map(function(t){return '<button data-act="tab" data-v="'+t[0]+'" class="'+(UI.tab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('')+'</nav>';
   app.innerHTML=h;
   document.querySelectorAll('textarea.auto').forEach(autosize);
@@ -230,6 +233,7 @@ function view(){
   if(UI.tab==='today')return todayView();
   if(UI.tab==='projects')return UI.pid&&P(UI.pid)?projectView(P(UI.pid)):projectList();
   if(UI.tab==='finance')return financeView();
+  if(UI.tab==='orders')return ordsView();
   if(UI.tab==='strategy')return strategyView();
   return archiveView()}
 function welcome(){return '<div class="card"><h2>Xoş gəlmisiniz</h2><p class="muted">Hələ layihə yoxdur. Hazır başlanğıc məlumatı faylını yükləyə və ya boş başlaya bilərsiniz.</p>'+
@@ -241,9 +245,10 @@ function taskRow(t,full){var d=isDone(t);var td=today();
   if(t.due){var late=!d&&t.due<td;chips+='<span class="chip '+(late?'bad':t.due===td?'warn':'')+'">'+(late?'Gecikib · ':'')+short(t.due)+'</span>'}
   if(t.repeat)chips+='<span class="chip">hər gün</span>';
   if(t.mine)chips+='<span class="chip good">mənim</span>';
+  if(!d&&(S.claudeOn||S.apiMode))chips+='<button class="chip" style="cursor:pointer;background:transparent;color:inherit" data-act="aitask" data-id="'+t.id+'">'+(UI.aib&&UI.aib[t.id]?'⏳ Claude işləyir…':(S.apiMode?'🤖 Claude-a ver':(t.q?'📥 Claude növbəsindədir ✕':'📥 Claude növbəsinə at')))+'</button>';
   if(UI.edit===t.id&&full)return editRow(t);
   return '<div class="task'+(d?' dn':'')+'"><button class="chk'+(d?' on':'')+'" data-act="toggle" data-id="'+t.id+'" aria-label="Tamamla">'+(d?'✓':'')+'</button>'+
-   '<div class="t"><b>'+esc(t.title)+'</b>'+(chips?'<div>'+chips+'</div>':'')+(t.note?'<div class="small muted" style="white-space:pre-wrap">'+esc(t.note)+'</div>':'')+'</div>'+
+   '<div class="t"><b>'+esc(t.title)+'</b>'+(chips?'<div>'+chips+'</div>':'')+(t.note?'<div class="small muted" style="white-space:pre-wrap">'+esc(t.note)+'</div>':'')+(t.ai?'<details><summary class="small">🤖 Claude cavabı · '+short(ds(new Date(t.ai.at)))+'</summary><div class="small" style="white-space:pre-wrap">'+esc(t.ai.text)+'</div></details>':'')+subHtml(t,full)+'</div>'+
    (full?'<div class="tact"><button data-act="up" data-id="'+t.id+'" aria-label="Yuxarı">▲</button><button data-act="down" data-id="'+t.id+'" aria-label="Aşağı">▼</button><button data-act="edit" data-id="'+t.id+'" aria-label="Redaktə">✎</button><button data-act="deltask" data-id="'+t.id+'" aria-label="Sil">✕</button></div>':'')+'</div>'}
 function editRow(t){return '<div class="task" style="display:block"><div class="grid g2"><label class="f">Tapşırıq<input type="text" id="ed-title" value="'+esc(t.title)+'"></label>'+
   '<label class="f">Mərhələ<input type="text" id="ed-phase" value="'+esc(t.phase)+'"></label>'+
@@ -258,6 +263,9 @@ function todayView(){var t=today();var d=new Date();
   S.fin.forEach(function(e){if(e.date===t){if(e.type==='in')inc+=e.amount;else out+=e.amount}});
   var mins=S.logs.filter(function(l){return l.date===t}).reduce(function(a,l){return a+(l.min||0)},0);
   var h='<div><h2 style="font-size:22px">'+DAYS[d.getDay()]+', '+human(t)+'</h2><div class="muted small">Layihələr strategiya sırasına görə düzülüb</div></div>';
+  h+=bkBanner();
+  h+=timerBar();
+  h+=aiCard();
   h+='<div class="row"><button class="btn p" data-act="report">📋 Claude üçün hesabat</button></div>';
   h+='<div class="grid g4"><div class="stat"><span>Bu gün gəlir</span><b class="num good">'+money(inc)+'</b></div><div class="stat"><span>Bu gün xərc</span><b class="num bad">'+money(out)+'</b></div><div class="stat"><span>Tamamlanan</span><b class="num">'+dn+'</b></div><div class="stat"><span>İş vaxtı</span><b class="num">'+(mins?Math.floor(mins/60)+' saat '+(mins%60)+' dəq':'0')+'</b></div></div>';
   ps.forEach(function(p){h+=todayCard(p,t)});
@@ -287,7 +295,7 @@ function projectList(){var h='<div class="row"><h2 class="grow" style="font-size
   sortedProjects(true).forEach(function(p){var pr=progress(p.id);var r=period();var f=finSum(minDate(),today(),p.id);
     h+='<article class="card pc" style="--pc:'+p.color+';cursor:pointer" data-act="open" data-id="'+p.id+'"><header style="margin-bottom:6px"><span class="dot"></span><h2 class="grow">'+esc(p.name)+'</h2><span class="chip">'+esc(p.status)+'</span></header>'+
     '<div class="small muted" style="margin-bottom:10px">'+esc(p.summary||p.type||'')+'</div><div class="row"><div class="bar grow"><i style="width:'+(pr.n?pr.d/pr.n*100:0)+'%"></i></div><span class="small muted num">'+pr.d+'/'+pr.n+' tapşırıq</span></div>'+
-    '<div class="row small" style="margin-top:8px"><span class="good num">+'+money(f.i)+'</span><span class="bad num">−'+money(f.o)+'</span></div></article>'});
+    (num(p.target)>0?tgtBar(p):'')+'<div class="row small" style="margin-top:8px"><span class="good num">+'+money(f.i)+'</span><span class="bad num">−'+money(f.o)+'</span></div></article>'});
   return h+'</div>'}
 
 function projectView(p){
@@ -322,11 +330,11 @@ function pfin(p){var all=finSum('0000-01-01','9999-12-31',p.id);var tc=toolCost(
    p.tools.map(function(x){return '<div class="item"><div class="b"><b>'+esc(x.name)+'</b> <span class="num">'+money(x.cost)+'</span>/ay <span class="small muted">'+(x.since?short(x.since)+' tarixindən':'')+'</span></div><div class="tact"><button data-act="tooltog" data-id="'+p.id+'" data-t="'+x.id+'">'+(x.active?'Dayandır':'Davam et')+'</button><button data-act="tooldel" data-id="'+p.id+'" data-t="'+x.id+'">✕</button></div></div>'}).join('')+
    '<div class="addrow"><input type="text" id="tl-n" placeholder="Məs: Claude abunəliyi"><input type="number" id="tl-c" inputmode="decimal" step="0.01" placeholder="AZN/ay" style="width:110px"><button class="btn" data-act="tooladd" data-id="'+p.id+'">Əlavə et</button></div></div>';
   return h}
-function finItem(e){return '<div class="item"><div class="d">'+short(e.date)+'</div><div class="b"><span class="num '+(e.type==='in'?'good':'bad')+'">'+(e.type==='in'?'+':'−')+money(e.amount)+'</span> '+esc(e.note)+'</div><div class="tact"><button data-act="delfin" data-id="'+e.id+'">✕</button></div></div>'}
+function finItem(e){return '<div class="item"><div class="d">'+short(e.date)+'</div><div class="b"><span class="num '+(e.type==='in'?'good':'bad')+'">'+(e.type==='in'?'+':'−')+money(e.amount)+'</span> '+esc(e.note)+(e.cat?' <span class="chip">'+esc(e.cat)+'</span>':'')+'</div><div class="tact"><button data-act="delfin" data-id="'+e.id+'">✕</button></div></div>'}
 function finForm(pid){var ps=sortedProjects(true);
   return '<div class="card"><h2>Yeni hərəkət</h2><div class="grid g4" style="margin-top:8px"><label class="f">Tarix<input type="date" id="ff-d" value="'+today()+'"></label>'+
   (pid?'':'<label class="f">Layihə<select id="ff-p">'+ps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select></label>')+
-  '<label class="f">Növ<select id="ff-t"><option value="in">Gəlir</option><option value="out">Xərc</option></select></label><label class="f">Məbləğ, ₼<input type="number" id="ff-a" inputmode="decimal" step="0.01" min="0"></label><label class="f">Qeyd<input type="text" id="ff-n" data-enter="addfin2" data-id="'+(pid||'')+'"></label></div>'+
+  '<label class="f">Kateqoriya<select id="ff-c">'+catOpts()+'</select></label><label class="f">Valyuta<select id="ff-u"><option>AZN</option><option>USD</option><option>EUR</option></select></label><label class="f">Növ<select id="ff-t"><option value="in">Gəlir</option><option value="out">Xərc</option></select></label><label class="f">Məbləğ, ₼<input type="number" id="ff-a" inputmode="decimal" step="0.01" min="0"></label><label class="f">Qeyd<input type="text" id="ff-n" data-enter="addfin2" data-id="'+(pid||'')+'"></label></div>'+
   '<div class="row" style="margin-top:10px"><button class="btn p" data-act="addfin2" data-id="'+(pid||'')+'">Əlavə et</button></div></div>'}
 function plog(p){var ls=S.logs.filter(function(l){return l.pid===p.id}).sort(function(a,b){return a.date===b.date?b.ts-a.ts:(a.date<b.date?1:-1)});
   var h='<div class="card"><h2>Gündəlik qeydlər</h2><div class="addrow"><input type="text" id="lg-'+p.id+'" data-enter="addlog" data-id="'+p.id+'" placeholder="Bu gün nə etdim…"><input type="number" id="lm-'+p.id+'" min="0" placeholder="dəq" style="width:78px"><button class="btn p" data-act="addlog" data-id="'+p.id+'">Yaz</button></div>';
@@ -335,7 +343,7 @@ function plog(p){var ls=S.logs.filter(function(l){return l.pid===p.id}).sort(fun
 function pset(p){var s=p.sc;function sel(k,label){return '<label class="f">'+label+'<select data-bind="sc|'+p.id+'|'+k+'">'+[1,2,3,4,5].map(function(v){return '<option'+(+s[k]===v||(!s[k]&&v===3)?' selected':'')+'>'+v+'</option>'}).join('')+'</select></label>'}
   return '<div class="card"><h2>Rəng</h2><div class="swatches" style="margin-top:8px">'+COLORS.map(function(c){return '<button style="background:'+c+'" class="'+(p.color===c?'on':'')+'" data-act="color" data-id="'+p.id+'" data-v="'+c+'" aria-label="Rəng"></button>'}).join('')+'</div></div>'+
   '<div class="card"><h2>Strategiya göstəriciləri</h2><div class="grid g4" style="margin-top:8px">'+sel('pot','Gəlir potensialı (1–5)')+sel('spd','Sürət (1–5)')+sel('rsk','Risk (1–5)')+
-  '<label class="f">Başlanğıc büdcə, ₼<input type="number" data-bind="sc|'+p.id+'|bud" value="'+esc(s.bud)+'"></label><label class="f">Hazırlıq, %<input type="number" min="0" max="100" data-bind="sc|'+p.id+'|rdy" value="'+esc(s.rdy)+'"></label><label class="f">Başlama tarixi<input type="date" data-bind="proj|'+p.id+'|start" value="'+esc(p.start)+'"></label></div></div>'+
+  '<label class="f">Başlanğıc büdcə, ₼<input type="number" data-bind="sc|'+p.id+'|bud" value="'+esc(s.bud)+'"></label><label class="f">Hazırlıq, %<input type="number" min="0" max="100" data-bind="sc|'+p.id+'|rdy" value="'+esc(s.rdy)+'"></label><label class="f">Aylıq gəlir hədəfi, ₼<input type="number" data-bind="proj|'+p.id+'|target" value="'+esc(p.target||'')+'"></label><label class="f">Başlama tarixi<input type="date" data-bind="proj|'+p.id+'|start" value="'+esc(p.start)+'"></label></div></div>'+
   '<div class="card row"><button class="btn" data-act="archproj" data-id="'+p.id+'">'+(p.archived?'Arxivdən çıxar':'Arxivə göndər')+'</button><button class="btn danger" data-act="delproj" data-id="'+p.id+'">'+(UI.confirm==='dp'+p.id?'Bütün məlumatla silinsin? Təkrar basın':'Layihəni sil')+'</button></div>'}
 
 function financeView(){var r=period(),f=r[0],t=r[1];var ps=sortedProjects(true);
@@ -346,6 +354,7 @@ function financeView(){var r=period(),f=r[0],t=r[1];var ps=sortedProjects(true);
   h+='<div class="small muted">'+human(f)+' – '+human(t)+'</div>';
   h+='<div class="grid g4"><div class="stat"><span>Gəlir</span><b class="num good">'+money(tot.i)+'</b></div><div class="stat"><span>Xərc</span><b class="num bad">'+money(tot.o)+'</b></div><div class="stat"><span>Abunələr</span><b class="num bad">'+money(tc)+'</b></div><div class="stat"><span>Xalis</span><b class="num">'+money(tot.i-tot.o-tc)+'</b></div></div>';
   h+=chart(f,t);
+  h+=catCard(f,t);h+=subsCard();h+=recCard();
   h+=finForm('');
   h+='<div class="card"><h2>Layihələr üzrə</h2><div class="tbl"><table><thead><tr><th>Layihə</th><th class="r">Gəlir</th><th class="r">Xərc</th><th class="r">Abunə</th><th class="r">Xalis</th></tr></thead><tbody>'+
    ps.map(function(p){var x=finSum(f,t,p.id);var c=toolCost(p,f,t);return '<tr><td><span class="dot" style="--pc:'+p.color+';display:inline-block;margin-right:6px"></span>'+esc(p.name)+'</td><td class="r num">'+money(x.i)+'</td><td class="r num">'+money(x.o)+'</td><td class="r num">'+money(c)+'</td><td class="r num"><b>'+money(x.i-x.o-c)+'</b></td></tr>'}).join('')+
@@ -363,6 +372,10 @@ function chart(f,t){var days=[];var d=t;while(d>=f&&days.length<31){days.unshift
   s+='<text x="'+L+'" y="'+(H-4)+'">'+short(vals[0].d)+'</text><text x="'+(W-6)+'" y="'+(H-4)+'" text-anchor="end">'+short(vals[vals.length-1].d)+'</text></svg>';
   return '<div class="card"><h2>Gün-gün qrafik</h2><div class="small muted"><span class="good">■</span> gəlir &nbsp; <span class="bad">■</span> xərc</div>'+s+'</div>'}
 
+function subsCard(){var ps=sortedProjects(true).filter(function(p){return !p.archived});var m=0,rows='';
+  S.projects.forEach(function(p){p.tools.forEach(function(x){if(x.active)m+=x.cost;rows+='<div class="item"><div class="b"><b>'+esc(x.name)+'</b> <span class="num">'+money(x.cost)+'</span>/ay <span class="small muted">· '+esc(p.name)+(x.since?' · '+short(x.since)+' tarixindən':'')+(x.active?'':' · dayandırılıb')+'</span></div><div class="tact"><button data-act="tooltog" data-id="'+p.id+'" data-t="'+x.id+'">'+(x.active?'Dayandır':'Davam et')+'</button><button data-act="tooldel" data-id="'+p.id+'" data-t="'+x.id+'">✕</button></div></div>'})});
+  return '<div class="card"><h2>Abunələr və aylıq xərclər</h2><div class="small muted">Aktiv abunələr: <b class="num bad">'+money(m)+'</b>/ay. Məbləğ gündəlik bölünür və Xalis nəticədən çıxılır.</div>'+(rows||'<div class="empty">Hələ abunə yoxdur.</div>')+
+  '<div class="grid g4" style="margin-top:10px"><label class="f">Ad<input type="text" id="fs-n" placeholder="Məs: Claude, Canva, domen"></label><label class="f">Layihə<select id="fs-p">'+ps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select></label><label class="f">Aylıq, ₼<input type="number" id="fs-c" inputmode="decimal" step="0.01" min="0"></label><label class="f">Başlama tarixi<input type="date" id="fs-d" value="'+today()+'"></label></div><div class="row" style="margin-top:10px"><button class="btn p" data-act="subadd">Abunə əlavə et</button></div></div>'}
 function strategyView(){var ps=sortedProjects(true).filter(function(p){return !p.archived});
   var rec=ps.slice().sort(function(a,b){return score(b)-score(a)});
   var h='<h2 style="font-size:20px">Strategiya və ardıcıllıq</h2><div class="card"><div class="small muted">Bal = 3×gəlir potensialı + 2×sürət + 2×(6−risk) + 2×büdcə uyğunluğu + hazırlıq/20, 100-ə çevrilir. Göstəriciləri hər layihənin “Ayarlar” bölməsində dəyişin.</div>'+
@@ -381,6 +394,7 @@ function archiveView(){var ps=sortedProjects(true);
   var q=UI.archQ.toLowerCase();var items=[];
   if(!UI.archT||UI.archT==='log')S.logs.forEach(function(l){items.push({d:l.date,ts:l.ts,pid:l.pid,k:'İş',t:l.text+(l.min?' ('+l.min+' dəq)':'')})});
   if(!UI.archT||UI.archT==='done')S.done.forEach(function(l){items.push({d:l.date,ts:l.ts,pid:l.pid,k:'Tamamlandı',t:l.title})});
+  if(!UI.archT)S.tasks.forEach(function(t){if(!isDone(t))items.push({d:(t.due||today()),ts:t.ts,pid:t.pid,k:'Açıq tapşırıq',t:t.title+(t.note?' · '+t.note:'')})});
   if(!UI.archT||UI.archT==='fin')S.fin.forEach(function(e){items.push({d:e.date,ts:e.ts,pid:e.pid,k:e.type==='in'?'Gəlir':'Xərc',t:(e.type==='in'?'+':'−')+money(e.amount)+(e.note?' · '+e.note:''),c:e.type==='in'?'good':'bad'})});
   items=items.filter(function(i){return (!UI.archPid||i.pid===UI.archPid)&&(!q||(i.t+' '+pname(i.pid)).toLowerCase().indexOf(q)>=0)}).sort(function(a,b){return a.d===b.d?(b.ts||0)-(a.ts||0):(a.d<b.d?1:-1)});
   h+='<div class="card"><h2>Xronologiya ('+items.length+')</h2>'+(items.slice(0,300).map(function(i){return '<div class="item"><div class="d">'+short(i.d)+'</div><div class="b"><span class="chip '+(i.c||'')+'">'+i.k+'</span><span class="chip" style="border-color:'+pcolor(i.pid)+'">'+esc(pname(i.pid))+'</span> '+esc(i.t)+'</div></div>'}).join('')||'<div class="empty">Uyğun qeyd tapılmadı.</div>')+'</div>';
@@ -397,7 +411,7 @@ function loadSb(){return new Promise(function(res,rej){if(window.supabase)return
 async function sbStart(){var c=cfg();if(!c.url||!c.key){syncState='local';return}
   try{await loadSb();sb=window.supabase.createClient(c.url,c.key);var r=await sb.auth.getSession();session=r.data.session;
     if(session){await pull()}else syncState='nologin'}catch(e){syncState='error';syncMsg=e.message}
-  render()}
+  render();if(session&&S.apiMode&&S.autoAdvice&&(!S.advice||S.advice.date!==today()))runAdvice()}
 async function pull(){if(!sb||!session)return;syncState='busy';
   var r=await sb.from('crm_state').select('data').eq('user_id',session.user.id).maybeSingle();
   if(r.error){syncState='error';syncMsg=r.error.message;return}
@@ -410,16 +424,92 @@ async function push(){if(!sb||!session)return;syncState='busy';
 function schedulePush(){if(!sb||!session)return;clearTimeout(pushT);pushT=setTimeout(push,1500)}
 document.addEventListener('visibilitychange',function(){if(!document.hidden&&sb&&session){pull().then(function(){if(!UI.modal&&!document.activeElement.matches('input,textarea,select'))render()})}});
 
-/* ---------- settings modal ---------- */
-  /* ---------- Claude üçün hesabat ---------- */
+/* ---------- Əlavələr: kateqoriya, valyuta, təkrar xərc, alt addım, taymer, PIN, geri al ---------- */
+var CATS=['Reklam','Material','Çatdırılma','Abunə','İcarə','Maaş/xidmət','Digər'];
+var UNDO=null,LOCK=false;try{LOCK=!!lsGet('crm_pin')&&sessionStorage.getItem('crm_unl')!=='1'}catch(x){LOCK=!!lsGet('crm_pin')}
+function catOpts(){return '<option value="">—</option>'+CATS.map(function(c){return '<option>'+c+'</option>'}).join('')}
+function rate(c){var r=S.rates||{};return c==='USD'?(+r.USD||1.7):c==='EUR'?(+r.EUR||1.85):1}
+function pinHash(p){return crypto.subtle.digest('SHA-256',new TextEncoder().encode('crm|'+p)).then(function(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return ('0'+x.toString(16)).slice(-2)}).join('')})}
+function applyRec(){var m=today().slice(0,7),dd=+today().slice(8),ch=false;(S.rec||[]).forEach(function(r){if(r.last!==m&&dd>=r.day){S.fin.push({id:uid(),date:m+'-'+pad(r.day),pid:r.pid,type:'out',amount:r.amount,note:r.note+' (təkrarlanan)',cat:r.cat||'',ts:Date.now()});r.last=m;ch=true}});if(ch)save()}
+function tgtBar(p){var tg=num(p.target),i=finSum(today().slice(0,8)+'01',today(),p.id).i;return '<div class="small muted" style="margin-top:8px">Bu ay hədəf: '+money(i)+' / '+money(tg)+'</div><div class="bar"><i style="width:'+Math.min(100,i/tg*100)+'%"></i></div>'}
+function catCard(f,t){var m={},tot=0;S.fin.forEach(function(e){if(e.type!=='out'||!inRange(e.date,f,t))return;var k=e.cat||'Kateqoriyasız';m[k]=(m[k]||0)+e.amount;tot+=e.amount});var ks=Object.keys(m).sort(function(a,b){return m[b]-m[a]});
+  if(!ks.length)return '';return '<div class="card"><h2>Xərc kateqoriyaları</h2>'+ks.map(function(k){return '<div class="row small" style="margin-top:6px"><span style="width:110px">'+esc(k)+'</span><div class="bar grow"><i style="width:'+m[k]/tot*100+'%"></i></div><span class="num">'+money(m[k])+'</span></div>'}).join('')+'</div>'}
+function recCard(){var ps=sortedProjects(true).filter(function(p){return !p.archived});
+  var rows=(S.rec||[]).map(function(r){return '<div class="item"><div class="b"><b>'+esc(r.note)+'</b> <span class="num bad">'+money(r.amount)+'</span> hər ayın '+r.day+'-i · <span class="small muted">'+esc(pname(r.pid))+'</span></div><div class="tact"><button data-act="recdel" data-id="'+r.id+'">✕</button></div></div>'}).join('');
+  return '<div class="card"><h2>Təkrarlanan xərclər</h2><div class="small muted">Hər ay seçdiyiniz gündə avtomatik xərc kimi yazılır (icarə, domen və s.).</div>'+rows+'<div class="grid g4" style="margin-top:10px"><label class="f">Ad<input type="text" id="rc-n"></label><label class="f">Layihə<select id="rc-p">'+ps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select></label><label class="f">Məbləğ, ₼<input type="number" id="rc-a" step="0.01" min="0" inputmode="decimal"></label><label class="f">Gün (1–28)<input type="number" id="rc-d" min="1" max="28" value="1"></label></div><div class="row" style="margin-top:10px"><button class="btn p" data-act="recadd">Əlavə et</button></div></div>'}
+function subHtml(t,full){var s=t.sub||[];var h=s.map(function(x,i){return '<div class="small" style="display:flex;gap:6px;align-items:center;padding:2px 0"><button class="chk'+(x.d?' on':'')+'" style="width:18px;height:18px;min-width:18px" data-act="subtog" data-id="'+t.id+'" data-i="'+i+'">'+(x.d?'✓':'')+'</button><span class="grow" style="'+(x.d?'text-decoration:line-through;opacity:.6':'')+'">'+esc(x.t)+'</span>'+(full?'<button data-act="subdel" data-id="'+t.id+'" data-i="'+i+'" aria-label="Sil">✕</button>':'')+'</div>'}).join('');
+  if(full)h+='<div class="addrow" style="margin-top:4px"><input type="text" id="sa-'+t.id+'" data-enter="subadd2" data-id="'+t.id+'" placeholder="+ alt addım"><button class="btn sm" data-act="subadd2" data-id="'+t.id+'">+</button></div>';return h}
+function tfmt(ms){var m=Math.floor(ms/60000);return pad(Math.floor(m/60))+':'+pad(m%60)}
+function timerBar(){var T0=S.timer,ps=sortedProjects();
+  if(T0)return '<div class="card"><div class="row"><span class="grow">⏱ <b>'+esc(pname(T0.pid))+'</b> · <b id="tmr" class="num">'+tfmt(Date.now()-T0.start)+'</b></span><input type="text" id="tm-t" placeholder="Nə etdim…" style="max-width:180px"><button class="btn p" data-act="tmstop">Dayandır</button></div></div>';
+  return '<div class="card"><div class="row"><span class="grow small muted">⏱ Taymer</span><select id="tm-p">'+ps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select><button class="btn" data-act="tmstart">▶ Başla</button></div></div>'}
+
+/* ---------- Sifarişlər ---------- */
+var OST=['Yeni','İstehsalda','Göndərildi','Çatdırıldı','Ləğv'];
+function ordOf(id){return S.orders.filter(function(o){return o.id===id})[0]}
+function ordPaid(o){var s=0;S.fin.forEach(function(e){if(e.oid===o.id&&e.type==='in')s+=e.amount});return s}
+function ordOpen(o){return o.status!=='Çatdırıldı'&&o.status!=='Ləğv'}
+function ordRest(o){return o.status==='Ləğv'?0:Math.max(0,o.price-ordPaid(o))}
+function waLink(p){var d=String(p||'').replace(/\D/g,'');if(!d)return '';if(d.charAt(0)==='0')d='994'+d.slice(1);else if(d.length===9)d='994'+d;return 'https://wa.me/'+d}
+function ordsView(){var t=today(),ms=t.slice(0,8)+'01';var rest=0,op=0,late=0,sale=0;
+  S.orders.forEach(function(o){if(ordOpen(o))op++;rest+=ordRest(o);if(ordOpen(o)&&o.due&&o.due<t)late++;if(o.status!=='Ləğv'&&o.date>=ms)sale+=o.price});
+  var h='<h2 style="font-size:20px">Sifarişlər</h2><div class="grid g4"><div class="stat"><span>Açıq sifariş</span><b class="num">'+op+'</b></div><div class="stat"><span>Gecikən</span><b class="num bad">'+late+'</b></div><div class="stat"><span>Qalıq borc</span><b class="num warn">'+money(rest)+'</b></div><div class="stat"><span>Bu ay satış</span><b class="num good">'+money(sale)+'</b></div></div>';
+  var ps=sortedProjects(true).filter(function(p){return !p.archived});
+  h+='<div class="card"><h2>Yeni sifariş</h2><div class="grid g2" style="margin-top:8px"><label class="f">Müştəri<input type="text" id="or-c"></label><label class="f">Telefon<input type="text" id="or-ph" inputmode="tel" placeholder="050 000 00 00"></label><label class="f">Məhsul<input type="text" id="or-i"></label><label class="f">Layihə<select id="or-p">'+ps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select></label><label class="f">Qiymət, ₼<input type="number" id="or-pr" inputmode="decimal" step="0.01" min="0"></label><label class="f">Avans, ₼<input type="number" id="or-adv" inputmode="decimal" step="0.01" min="0"></label><label class="f">Çatdırılma tarixi<input type="date" id="or-due"></label></div><div class="row" style="margin-top:10px"><button class="btn p" data-act="addord">Sifariş əlavə et</button></div>'+(UI.omsg?'<p class="small bad">'+esc(UI.omsg)+'</p>':'')+'</div>';
+  var fl=[['','Aktiv'],['all','Hamısı']].concat(OST.map(function(s){return [s,s]}));
+  h+='<div class="sub">'+fl.map(function(x){return '<button data-act="ostat" data-v="'+x[0]+'" class="'+((UI.ostat||'')===x[0]?'on':'')+'">'+x[1]+'</button>'}).join('')+'</div>';
+  var list=S.orders.filter(function(o){var f=UI.ostat||'';return f==='all'||(f===''?ordOpen(o):o.status===f)}).sort(function(a,b){return (a.due||'9')<(b.due||'9')?-1:1});
+  h+=list.map(function(o){var pd2=ordPaid(o),r=ordRest(o),lt=ordOpen(o)&&o.due&&o.due<t,wa=waLink(o.phone);
+    return '<div class="card pc" style="--pc:'+pcolor(o.pid)+'"><div class="row"><b class="grow">'+esc(o.client)+'</b><select data-bind="ord|'+o.id+'|status">'+OST.map(function(s){return '<option'+(o.status===s?' selected':'')+'>'+s+'</option>'}).join('')+'</select></div>'+
+    '<div class="small muted">'+esc(o.item)+' · '+esc(pname(o.pid))+' · '+short(o.date)+(o.phone?' · '+esc(o.phone):'')+(wa?' · <a href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>':'')+'</div>'+
+    '<div class="row small" style="margin-top:8px"><span>Qiymət <b class="num">'+money(o.price)+'</b></span><span class="good num">Ödənilib '+money(pd2)+'</span><span class="'+(r?'bad':'good')+' num">Qalıq '+money(r)+'</span>'+(o.due?'<span class="chip '+(lt?'bad':'')+'">'+(lt?'Gecikib · ':'Çatdırılma · ')+short(o.due)+'</span>':'')+'</div>'+
+    '<div class="addrow"><input type="number" id="op-'+o.id+'" inputmode="decimal" step="0.01" min="0" placeholder="Ödəniş, ₼"><button class="btn" data-act="addpay" data-id="'+o.id+'">Ödəniş yaz</button><button class="btn sm danger" data-act="delord" data-id="'+o.id+'">'+(UI.confirm==='o'+o.id?'Əminsiniz?':'Sil')+'</button></div></div>'}).join('')||'<div class="card empty">Bu filtrdə sifariş yoxdur.</div>';
+  return h}
+function addOrder(){var c=val('or-c').trim(),i=val('or-i').trim(),pid=val('or-p'),pr=num(val('or-pr')),adv=num(val('or-adv'));
+  if(!c||!pid||!(pr>0)){UI.omsg='Müştəri adı və qiymət mütləqdir.';return}
+  if(adv>pr){UI.omsg='Avans qiymətdən çox ola bilməz.';return}
+  UI.omsg='';var o={id:uid(),date:today(),pid:pid,client:c,phone:val('or-ph').trim(),item:i,price:pr,status:'Yeni',due:val('or-due'),ts:Date.now()};S.orders.push(o);
+  if(adv>0&&addFin(pid,'in',adv,'Sifariş avansı: '+c))S.fin[S.fin.length-1].oid=o.id;save()}
+function addPay(id){var o=ordOf(id);if(!o)return;var a=num(val('op-'+id));if(!(a>0))return;
+  if(a>ordRest(o)+0.005){UI.omsg='';if(!confirm('Məbləğ qalıqdan çoxdur ('+money(ordRest(o))+'). Yenə də yazılsın?'))return}
+  if(addFin(o.pid,'in',a,'Sifariş ödənişi: '+o.client))S.fin[S.fin.length-1].oid=o.id;save()}
+function bkBanner(){var d=lsGet('crm_last_bk');var n=d?diffDays(d,today()):999;if(n<7||(!S.tasks.length&&!S.fin.length))return '';
+  return '<div class="card" style="border-color:var(--warn,#ffb54d)"><div class="row"><span class="grow small">'+(d?'Son ehtiyat nüsxə '+n+' gün əvvəl alınıb.':'Hələ ehtiyat nüsxə alınmayıb.')+'</span><button class="btn sm p" data-act="export">Faylı yüklə</button></div></div>'}
+function doCsv(){var q=function(s){return '"'+String(s==null?'':s).replace(/"/g,'""')+'"'};
+  var rows=[['Tarix','Layihə','Növ','Məbləğ','Qeyd','Sifariş','Kateqoriya']];S.fin.slice().sort(function(a,b){return a.date<b.date?-1:1}).forEach(function(e){var o=e.oid?ordOf(e.oid):null;rows.push([e.date,pname(e.pid),e.type==='in'?'Gəlir':'Xərc',String(e.amount).replace('.',','),e.note||'',o?o.client:'',e.cat||''])});
+  var b=new Blob(['\ufeff'+rows.map(function(r){return r.map(q).join(';')}).join('\r\n')],{type:'text/csv;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='maliyye-'+today()+'.csv';document.body.appendChild(a);a.click();a.remove()}
+
+/* ---------- Claude köməkçi ---------- */
+async function askClaude(mode,text){if(!sb||!session)throw new Error('Əvvəl ⚙ Ayarlar-da Supabase-ə giriş edin.');
+  var r=await sb.functions.invoke('claude',{body:{mode:mode,text:text}});
+  if(r.error){var m=r.error.message;try{var j=await r.error.context.json();if(j&&j.error)m=j.error}catch(e){}throw new Error(m)}
+  if(r.data&&r.data.error)throw new Error(r.data.error);return r.data.text}
+async function aiDo(key,mode,text,ok){UI.aib=UI.aib||{};UI.aib[key]=1;UI.aierr='';render();
+  try{ok(await askClaude(mode,text))}catch(e){UI.aierr=e.message||String(e)}
+  UI.aib[key]=0;render();if(UI.aierr&&key!=='adv'&&key!=='ask')alert(UI.aierr)}
+function runAdvice(){return aiDo('adv','advise',buildReport(),function(x){S.advice={text:x,date:today(),at:Date.now()};save()})}
+function runAsk(){var q=val('ai-q').trim();if(!q)return;return aiDo('ask','ask',buildReport()+'\n\nSUAL/TAPŞIRIQ: '+q,function(x){UI.askout=x})}
+function delegateTask(id){var t=S.tasks.filter(function(x){return x.id===id})[0];if(!t)return;var p=P(t.pid)||{sections:[],name:'—',status:''};
+  var secs=p.sections.slice(0,4).map(function(s){return s.title+': '+clip(s.body,500)}).join('\n');
+  var lg=S.logs.filter(function(l){return l.pid===t.pid}).slice(-5).map(function(l){return short(l.date)+': '+clip(l.text,100)}).join('\n');
+  var ctx='LAYİHƏ: '+p.name+' ['+p.status+']\nTəsvir: '+clip(p.summary,300)+'\nQeydlər:\n'+secs+'\nSon işlər:\n'+lg+'\n\nTAPŞIRIQ: '+t.title+(t.note?'\nƏlavə: '+t.note:'')+(t.due?'\nSon tarix: '+t.due:'');
+  return aiDo(id,'task',ctx,function(x){t.ai={text:x,at:Date.now()};save()})}
+function aiCard(){var a=S.advice,b=UI.aib||{};if(!S.claudeOn&&!S.apiMode)return '';
+  if(!S.apiMode){var qn=S.tasks.filter(function(x){return x.q&&!x.done}).length;return '<div class="card"><h2>🤖 Claude köməkçi</h2>'+(a?'<div class="small muted">'+human(a.date)+'</div><div style="white-space:pre-wrap;margin-top:6px">'+esc(a.text)+'</div>':'<div class="small muted">Claude-a deyin: «CRM-ə bax və bu gün nə etməliyəm?» Məsləhət burada görünəcək.</div>')+'<div class="small" style="margin-top:8px">📥 Claude növbəsində: <b>'+qn+'</b> tapşırıq'+(qn?' · Claude-a deyin: «CRM-dəki növbəni icra et»':'')+'</div></div>'}
+  return '<div class="card"><div class="row"><h2 class="grow">🤖 Claude məsləhətçi</h2><button class="btn sm p" data-act="advice">'+(b.adv?'Düşünür…':(a?'Yenilə':'Məsləhət ver'))+'</button></div>'+
+  (a?'<div class="small muted">'+human(a.date)+'</div><div style="white-space:pre-wrap;margin-top:6px">'+esc(a.text)+'</div>':'<div class="small muted">Claude CRM məlumatını oxuyub bu gün nə etməli olduğunu deyəcək.</div>')+
+  (UI.aierr?'<p class="small bad">'+esc(UI.aierr)+'</p>':'')+
+  '<div class="addrow"><input type="text" id="ai-q" data-enter="aiask" placeholder="Claude-a sual və ya tapşırıq yaz…"><button class="btn" data-act="aiask">'+(b.ask?'…':'Göndər')+'</button></div>'+(UI.askout?'<div style="white-space:pre-wrap;margin-top:8px">'+esc(UI.askout)+'</div>':'')+'</div>'}
+
+/* ---------- Claude üçün hesabat ---------- */
 function clip(s,n){s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1)+'…':s}
 function hm(m){return m?Math.floor(m/60)+' saat '+(m%60)+' dəq':'0'}
 function buildReport(){
-  var t=today(),f=addDays(t,-6),L=[];
+  var t=today(),f=addDays(t,-((UI.rd||7)-1)),L=[];
   function inR(d){return !!d&&d>=f&&d<=t}
   var tot=finSum(f,t),tc=toolCostAll(f,t),allMin=0;
   S.logs.forEach(function(l){if(inR(l.date))allMin+=l.min||0});
-  L.push('CRM HESABATI · son 7 gün ('+human(f)+' – '+human(t)+')');
+  L.push('CRM HESABATI · son '+(UI.rd||7)+' gün ('+human(f)+' – '+human(t)+')');
   L.push('Ümumi: gəlir '+money(tot.i)+', xərc '+money(tot.o)+', abunə '+money(tc)+', xalis '+money(tot.i-tot.o-tc)+', iş vaxtı '+hm(allMin));
   var ps=sortedProjects(true).filter(function(p){return !p.archived}),stuck=[];
   L.push('');L.push('LAYİHƏLƏR ÜZRƏ');
@@ -450,29 +540,34 @@ function buildReport(){
       else if(k.prio===1&&k.ts&&k.ts<Date.now()-7*864e5)stuck.push(p.name+': “'+clip(k.title,70)+'” yüksək prioritetlidir, 7+ gündür açıqdır');
     });
     if((p.status==='İşləyir'||p.status==='Planlaşdırma')&&!done.length&&!logs.length&&!fins.length&&once.length)
-      stuck.push(p.name+': son 7 gündə heç bir hərəkət yoxdur ('+once.length+' açıq tapşırıq)');
+      stuck.push(p.name+': son '+(UI.rd||7)+' gündə heç bir hərəkət yoxdur ('+once.length+' açıq tapşırıq)');
   });
+  var oo=S.orders.filter(ordOpen),rs=0;S.orders.forEach(function(o){rs+=ordRest(o)});
+  L.push('');L.push('SİFARİŞLƏR: açıq '+oo.length+', qalıq borc '+money(rs)+', dövrdə yeni '+S.orders.filter(function(o){return inR(o.date)}).length);
+  oo.sort(function(a,b){return (a.due||'9')<(b.due||'9')?-1:1}).slice(0,8).forEach(function(o){L.push('  ○ '+clip(o.client,30)+' · '+clip(o.item,40)+' ['+o.status+'] qalıq '+money(ordRest(o))+(o.due?' · çatdırılma '+short(o.due):''));if(o.due&&o.due<t)stuck.push('Sifariş '+clip(o.client,30)+': çatdırılma '+diffDays(o.due,t)+' gün gecikib')});
   L.push('');L.push('İLİŞƏN İŞLƏR');
   if(stuck.length)stuck.forEach(function(s){L.push('! '+s)});else L.push('Görünən ilişən iş yoxdur.');
   if(S.note&&S.note.trim()){L.push('');L.push('Strategiya qeydi: '+clip(S.note,300))}
   return L.join('\n')}
 function reportModal(){return '<div class="modalbg" data-act="closemodal"><div class="modal" data-stop="1"><div class="row"><h2 class="grow">Claude üçün hesabat</h2><button class="btn sm" data-act="closemodal">Bağla</button></div>'+
-  '<p class="small muted">Son 7 günün qısa xülasəsi. Kopyalayıb Claude söhbətinə yapışdırın.</p>'+
+  '<p class="small muted">Qısa xülasə (son '+(UI.rd||7)+' gün). Kopyalayıb Claude söhbətinə yapışdırın.</p>'+
   '<textarea id="rep-text" readonly style="width:100%;height:46vh;font-size:13px;line-height:1.45">'+esc(UI.report||'')+'</textarea>'+
-  '<div class="row" style="margin-top:8px"><button class="btn p" data-act="copyreport">Kopyala</button><button class="btn" data-act="report">Yenilə</button></div>'+
+  '<div class="row" style="margin-top:8px"><button class="btn p" data-act="copyreport">Kopyala</button><button class="btn" data-act="report">Yenilə</button><button class="btn" data-act="repdays" data-v="'+((UI.rd||7)===7?30:7)+'">'+((UI.rd||7)===7?'30 gün':'7 gün')+'</button></div>'+
   (UI.msg?'<p class="small good">'+esc(UI.msg)+'</p>':'')+'</div></div>'}
 function copyReport(){
   function ok(){UI.msg='Kopyalandı ✓ İndi Claude söhbətinə yapışdırın.';render()}
   function fb(){var ta=el('rep-text');var done=false;try{ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);done=document.execCommand('copy')}catch(x){}
     if(done)ok();else{UI.msg='Avtomatik kopyalanmadı. Mətn seçilib: əl ilə kopyalayın (uzun basıb “Kopyala”).';render();var t2=el('rep-text');if(t2){t2.focus();t2.select()}}}
   try{navigator.clipboard.writeText(UI.report||'').then(ok,fb)}catch(x){fb()}}
+
+/* ---------- settings modal ---------- */
 function modalView(){if(UI.modal==='report')return reportModal();var c=cfg();var h='<div class="modalbg" data-act="closemodal"><div class="modal" data-stop="1"><div class="row"><h2 class="grow">Ayarlar</h2><button class="btn sm" data-act="closemodal">Bağla</button></div>';
   h+='<div><h3 style="font-size:15px">Cihazlar arası sinxron (Supabase)</h3>';
   if(!c.url||!c.key){h+='<p class="muted small">Telefon və kompüterdə eyni məlumatı görmək üçün Supabase layihəsinin ünvanını və anon açarını yazın.</p><label class="f">Project URL<input type="url" id="sb-url" placeholder="https://xxxx.supabase.co"></label><label class="f" style="margin-top:6px">anon public key<input type="text" id="sb-key"></label><div class="row" style="margin-top:8px"><button class="btn p" data-act="sbsave">Saxla</button></div>'}
   else if(!session){h+='<label class="f">Email<input type="email" id="sb-mail" autocomplete="username"></label><label class="f" style="margin-top:6px">Parol<input type="password" id="sb-pass" autocomplete="current-password"></label><div class="row" style="margin-top:8px"><button class="btn p" data-act="sblogin">Giriş</button><button class="btn" data-act="sbsignup">Hesab yarat</button><button class="btn ghost" data-act="sbreset">Ayarı sil</button></div>'}
   else{h+='<p class="small">Daxil olunub: <b>'+esc(session.user.email)+'</b></p><div class="row"><button class="btn p" data-act="sbsync">İndi sinxronla</button><button class="btn" data-act="sblogout">Çıxış</button></div>'}
   if(UI.msg)h+='<p class="small bad">'+esc(UI.msg)+'</p>';
-  h+='</div><div><h3 style="font-size:15px">Ehtiyat nüsxə</h3><div class="row" style="margin-top:6px"><button class="btn" data-act="report">Claude üçün hesabat</button><button class="btn" data-act="export">Faylı yüklə</button><button class="btn" data-act="copyjson">Kopyala</button><label class="btn" style="cursor:pointer">Fayldan bərpa et<input type="file" accept=".json,application/json" data-file="import" hidden></label></div><p class="small muted">Bərpa cari məlumatı əvəz edir.</p></div></div></div>';
+  h+='</div><div><h3 style="font-size:15px">Görünüş və təhlükəsizlik</h3><div class="row" style="margin-top:6px"><button class="btn" data-act="theme">Açıq / tünd rejim</button></div><div class="row" style="margin-top:8px"><input type="password" id="pin-n" inputmode="numeric" placeholder="Yeni PIN (4–8 rəqəm)" style="max-width:190px"><button class="btn" data-act="setpin">PIN qur</button><button class="btn ghost" data-act="rmpin">PIN sil</button></div><p class="small muted">PIN yalnız bu cihazda səhifəni kilidləyir. Əsas qoruma Supabase girişidir.</p><h3 style="font-size:15px;margin-top:12px">Valyuta məzənnəsi (1 vahid = ? ₼)</h3><div class="row"><input type="number" id="rt-usd" step="0.01" value="'+rate('USD')+'" style="max-width:90px"> USD <input type="number" id="rt-eur" step="0.01" value="'+rate('EUR')+'" style="max-width:90px"> EUR <button class="btn" data-act="saverates">Saxla</button></div></div><div><h3 style="font-size:15px">Claude köməkçi</h3><div class="row" style="margin-top:6px"><button class="btn" data-act="claudetog">Claude bölməsi: '+(S.claudeOn?'AÇIQ':'bağlı')+'</button><button class="btn" data-act="apitog">API rejimi: '+(S.apiMode?'AÇIQ':'bağlı')+'</button><button class="btn" data-act="autotog">Gündəlik avtomatik məsləhət: '+(S.autoAdvice?'AÇIQ':'bağlı')+'</button></div><p class="small muted">Açıq olanda hər gün CRM-i ilk açanda Claude məsləhət yazır.</p></div><div><h3 style="font-size:15px">Ehtiyat nüsxə</h3><div class="row" style="margin-top:6px"><button class="btn" data-act="report">Claude üçün hesabat</button><button class="btn" data-act="export">Faylı yüklə</button><button class="btn" data-act="csv">Maliyyə (CSV)</button><button class="btn" data-act="copyjson">Kopyala</button><label class="btn" style="cursor:pointer">Fayldan bərpa et<input type="file" accept=".json,application/json" data-file="import" hidden></label></div><p class="small muted">Bərpa cari məlumatı əvəz edir.</p></div></div></div>';
   return h}
 
 /* ---------- events ---------- */
@@ -491,11 +586,12 @@ document.addEventListener('change',function(e){var t=e.target;
   var a=t.dataset&&t.dataset.actChange;if(a){if(a==='pfrom')UI.from=t.value;if(a==='pto')UI.to=t.value;if(a==='archp')UI.archPid=t.value;if(a==='archt')UI.archT=t.value;render()}});
 function bind(t){var p=t.dataset.bind.split('|');var v=t.value;
   if(p[0]==='note'){S.note=v}
+  else if(p[0]==='ord'){var od=ordOf(p[1]);if(od)od[p[2]]=(p[2]==='price')?num(v):v}
   else if(p[0]==='proj'){var pr=P(p[1]);if(pr)pr[p[2]]=v}
   else if(p[0]==='sec'){var pr2=P(p[1]);if(pr2&&pr2.sections[+p[2]])pr2.sections[+p[2]][p[3]]=v}
   else if(p[0]==='sc'){var pr3=P(p[1]);if(pr3)pr3.sc[p[2]]=(p[2]==='bud'&&v==='')?'':num(v)}}
 function readFile(f){if(!f)return;var r=new FileReader();r.onload=function(){try{var d=norm(JSON.parse(r.result));if(!d.projects.length&&!d.tasks.length)throw new Error('boş');S=d;if(!S.updatedAt)S.updatedAt=1;save();UI.modal=false;UI.tab='today';UI.pid=null;render()}catch(err){UI.msg='Fayl oxunmadı: düzgün CRM JSON faylı seçin.';render()}};r.readAsText(f)}
-function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;
+function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;var DEL=/^(deltask|dellog|delfin|delproj|delord|delsec|tooldel|dellink|recdel|subdel)$/.test(a);if(DEL)UNDO=JSON.stringify(S);
   switch(a){
   case 'tab':UI.tab=v;UI.pid=null;UI.edit=null;window.scrollTo(0,0);break;
   case 'open':UI.pid=id;UI.ptab='tasks';UI.tab='projects';window.scrollTo(0,0);break;
@@ -513,13 +609,15 @@ function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;
   case 'addlog':addLog(id,val('lg-'+id),val('lm-'+id));UI.focus='lg-'+id;break;
   case 'dellog':S.logs=S.logs.filter(function(x){return x.id!==id});save();break;
   case 'addfin':var ok1=addFin(id,'in',val('fi-'+id),val('fn-'+id)),ok2=addFin(id,'out',val('fo-'+id),val('fn-'+id));if(ok1||ok2)UI.focus='fi-'+id;break;
-  case 'addfin2':var pid=id||val('ff-p');if(pid&&addFin(pid,val('ff-t'),val('ff-a'),val('ff-n'),val('ff-d')||today()))UI.focus='ff-a';break;
+  case 'addfin2':var pid=id||val('ff-p'),cu=val('ff-u')||'AZN',am=num(val('ff-a')),nt=val('ff-n');if(cu!=='AZN'){nt=(nt+' ['+am+' '+cu+']').trim();am=Math.round(am*rate(cu)*100)/100}
+    if(pid&&addFin(pid,val('ff-t'),am,nt,val('ff-d')||today())){S.fin[S.fin.length-1].cat=val('ff-c');save();UI.focus='ff-a'}break;
   case 'delfin':S.fin=S.fin.filter(function(x){return x.id!==id});save();break;
   case 'addsec':P(id).sections.push({title:'Yeni bölmə',body:''});save();break;
   case 'delsec':if(ask('sec'+id+t.dataset.i)){P(id).sections.splice(+t.dataset.i,1);save()}break;
   case 'addlink':var u=val('lk-u').trim();if(u){P(id).links.push({label:val('lk-l').trim(),url:u});save()}break;
   case 'dellink':P(id).links.splice(+t.dataset.i,1);save();break;
   case 'tooladd':var nm=val('tl-n').trim();if(nm){P(id).tools.push({id:uid(),name:nm,cost:num(val('tl-c')),since:today(),active:true,until:''});save()}break;
+  case 'subadd':var sp=val('fs-p'),sn=val('fs-n').trim(),sc2=num(val('fs-c'));if(sp&&P(sp)&&sn&&sc2>0){P(sp).tools.push({id:uid(),name:sn,cost:sc2,since:val('fs-d')||today(),active:true,until:''});save()}break;
   case 'tooltog':P(id).tools.forEach(function(x){if(x.id===t.dataset.t){x.active=!x.active;x.until=x.active?'':today()}});save();break;
   case 'tooldel':P(id).tools=P(id).tools.filter(function(x){return x.id!==t.dataset.t});save();break;
   case 'color':P(id).color=v;save();break;
@@ -529,7 +627,32 @@ function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;
   case 'period':UI.period=v;break;
   case 'applyrec':sortedProjects(true).filter(function(p){return !p.archived}).sort(function(a,b){return score(b)-score(a)}).forEach(function(p,i){p.order=i+1});save();break;
   case 'pup':case 'pdown':var l=sortedProjects(true).filter(function(p){return !p.archived});var i=l.map(function(p){return p.id}).indexOf(id);var j=i+(a==='pup'?-1:1);if(j>=0&&j<l.length){var o=l[i].order;l[i].order=l[j].order;l[j].order=o;save()}break;
- case 'settings':UI.modal=true;UI.msg='';break;
+  case 'settings':UI.modal=true;UI.msg='';break;
+  case 'aitask':if(S.apiMode){delegateTask(id);re=false}else{var tq=S.tasks.filter(function(x){return x.id===id})[0];if(tq){tq.q=!tq.q;save()}}break;
+  case 'apitog':S.apiMode=!S.apiMode;save();break;
+  case 'advice':runAdvice();re=false;break;
+  case 'aiask':runAsk();re=false;break;
+  case 'autotog':S.autoAdvice=!S.autoAdvice;save();break;
+  case 'undo':if(UNDO){S=norm(JSON.parse(UNDO));save()}UI.undoOn=false;break;
+  case 'unlock':pinHash(val('pin-i')).then(function(h){if(h===lsGet('crm_pin')){LOCK=false;UI.pinErr=false;try{sessionStorage.setItem('crm_unl','1')}catch(x){}}else UI.pinErr=true;render()});re=false;break;
+  case 'setpin':var pn=val('pin-n').trim();if(/^\d{4,8}$/.test(pn)){pinHash(pn).then(function(h){lsSet('crm_pin',h);try{sessionStorage.setItem('crm_unl','1')}catch(x){}UI.msg='PIN quruldu.';render()});re=false}else UI.msg='PIN 4–8 rəqəm olmalıdır.';break;
+  case 'rmpin':lsSet('crm_pin','');UI.msg='PIN silindi.';break;
+  case 'theme':var nt2=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',nt2);lsSet('crm_theme',nt2);break;
+  case 'saverates':S.rates={USD:num(val('rt-usd'))||1.7,EUR:num(val('rt-eur'))||1.85};save();UI.msg='Məzənnə saxlanıldı.';break;
+  case 'claudetog':S.claudeOn=!S.claudeOn;save();break;
+  case 'tmstart':if(val('tm-p')){S.timer={pid:val('tm-p'),start:Date.now()};save()}break;
+  case 'tmstop':if(S.timer){var mm=Math.max(1,Math.round((Date.now()-S.timer.start)/60000));addLog(S.timer.pid,val('tm-t').trim()||'Taymer ilə iş',mm);S.timer=null;save()}break;
+  case 'subadd2':var ts2=S.tasks.filter(function(x){return x.id===id})[0],tx=val('sa-'+id).trim();if(ts2&&tx){ts2.sub=ts2.sub||[];ts2.sub.push({t:tx,d:false});save();UI.focus='sa-'+id}break;
+  case 'subtog':var ts3=S.tasks.filter(function(x){return x.id===id})[0];if(ts3&&ts3.sub[+t.dataset.i]){ts3.sub[+t.dataset.i].d=!ts3.sub[+t.dataset.i].d;save()}break;
+  case 'subdel':var ts4=S.tasks.filter(function(x){return x.id===id})[0];if(ts4){ts4.sub.splice(+t.dataset.i,1);save()}break;
+  case 'recadd':var rn=val('rc-n').trim(),ra=num(val('rc-a'));if(rn&&ra>0&&val('rc-p')){S.rec=S.rec||[];S.rec.push({id:uid(),pid:val('rc-p'),note:rn,amount:ra,day:Math.min(28,Math.max(1,Math.round(num(val('rc-d')))||1)),cat:'',last:''});applyRec();save()}break;
+  case 'recdel':S.rec=(S.rec||[]).filter(function(x){return x.id!==id});save();break;
+  case 'ostat':UI.ostat=v;break;
+  case 'addord':addOrder();break;
+  case 'addpay':addPay(id);break;
+  case 'delord':if(ask('o'+id)){S.orders=S.orders.filter(function(x){return x.id!==id});S.fin=S.fin.filter(function(x){return x.oid!==id});save()}break;
+  case 'csv':doCsv();re=false;break;
+  case 'repdays':UI.rd=+v;UI.report=buildReport();break;
   case 'report':UI.report=buildReport();UI.modal='report';UI.msg='';break;
   case 'copyreport':copyReport();re=false;break;
   case 'closemodal':UI.modal=false;break;
@@ -541,15 +664,19 @@ function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;
   case 'export':doExport();re=false;break;
   case 'copyjson':try{navigator.clipboard.writeText(JSON.stringify(S,null,1)).then(function(){UI.msg='Kopyalandı. Mətn faylına yapışdırıb .json kimi saxlaya bilərsiniz.';render()},function(){UI.msg='Kopyalamaq mümkün olmadı.';render()})}catch(x){UI.msg='Kopyalamaq mümkün olmadı.';render()}re=false;break;
   }
+  if(DEL&&JSON.stringify(S)!==UNDO){UI.undoOn=true;clearTimeout(UI.undoT);UI.undoT=setTimeout(function(){UI.undoOn=false;render()},12000)}
   if(re)render()}
 async function authDo(signup){var em=val('sb-mail').trim(),pw=val('sb-pass');UI.msg='';
   try{var r=signup?await sb.auth.signUp({email:em,password:pw}):await sb.auth.signInWithPassword({email:em,password:pw});
     if(r.error)throw r.error;session=r.data.session;if(!session){UI.msg='Hesab yaradıldı. Email təsdiqi tələb olunarsa, təsdiqləyib giriş edin.'}else{await pull()}}
   catch(e){UI.msg=e.message||'Giriş alınmadı'}
   render()}
-function doExport(){var b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='crm-ehtiyat-'+today()+'.json';document.body.appendChild(a);a.click();a.remove()}
+function doExport(){var b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='crm-ehtiyat-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();lsSet('crm_last_bk',today());render()}
 
-render();sbStart();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+var th=lsGet('crm_theme');if(th)document.documentElement.setAttribute('data-theme',th);
+applyRec();render();sbStart();
+setInterval(function(){var e=el('tmr');if(e&&S.timer)e.textContent=tfmt(Date.now()-S.timer.start)},15000);
 })();
 </script>
 </body></html>
