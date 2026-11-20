@@ -127,6 +127,7 @@ nav.tabs button.on{box-shadow:inset 0 0 0 1px var(--accent),0 0 16px -6px var(--
 input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 h2{letter-spacing:-.015em}
 @media (prefers-reduced-motion:no-preference){.btn,.chk,.sub button,nav.tabs button{transition:background .15s,box-shadow .15s,border-color .15s}}
+@media(max-width:899px){nav.tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}nav.tabs::-webkit-scrollbar{display:none}nav.tabs button{flex:0 0 auto;padding:8px 13px;white-space:nowrap}}
 </style>
 <link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png">
 </head><body>
@@ -162,9 +163,9 @@ function money(n){n=Math.round(n*100)/100;var neg=n<0;var p=Math.abs(n).toFixed(
 function el(id){return document.getElementById(id)}
 
 /* ---------- state ---------- */
-function empty(){return {v:1,updatedAt:0,projects:[],tasks:[],logs:[],fin:[],done:[],orders:[],note:''}}
+function empty(){return {v:1,updatedAt:0,projects:[],tasks:[],logs:[],fin:[],done:[],orders:[],subs:[],courier:[],note:''}}
 function norm(s){var e=empty();for(var k in e){if(s[k]===undefined)s[k]=e[k]}
-  ['projects','tasks','logs','fin','done','orders'].forEach(function(k){if(!Array.isArray(s[k]))s[k]=[]});
+  ['projects','tasks','logs','fin','done','orders','subs','courier'].forEach(function(k){if(!Array.isArray(s[k]))s[k]=[]});
   s.projects.forEach(function(p,i){p.sections=p.sections||[];p.links=p.links||[];p.tools=p.tools||[];p.sc=p.sc||{};if(p.order==null)p.order=i+1;p.status=p.status||'Planlaşdırma';p.color=p.color||COLORS[i%COLORS.length]});
   return s}
 function load(){var raw=lsGet(LS);if(raw){try{return norm(JSON.parse(raw))}catch(e){}}
@@ -213,7 +214,7 @@ function newProject(){var n=S.projects.length;var p={id:uid(),name:'Yeni layihə
 function ask(key){if(UI.confirm===key){UI.confirm=null;return true}UI.confirm=key;return false}
 
 /* ---------- render ---------- */
-var TABS=[['today','Bu gün'],['projects','Layihələr'],['finance','Maliyyə'],['orders','Sifarişlər'],['strategy','Strategiya'],['archive','Arxiv']];
+var TABS=[['today','Bu gün'],['projects','Layihələr'],['finance','Maliyyə'],['orders','Sifarişlər'],['subs','Abunəliklər'],['courier','Kuryerlik'],['strategy','Strategiya'],['archive','Arxiv']];
 function render(){
   var sy=window.scrollY;var app=el('app');
   if(LOCK){app.innerHTML='<div class="card" style="max-width:320px;margin:20vh auto"><h2>🔒 Mənim CRM</h2><input type="password" id="pin-i" inputmode="numeric" data-enter="unlock" placeholder="PIN" style="margin-top:10px">'+(UI.pinErr?'<p class="small bad">Yanlış PIN</p>':'')+'<div class="row" style="margin-top:10px"><button class="btn p" data-act="unlock">Aç</button></div></div>';el('modal').hidden=true;return}
@@ -234,6 +235,8 @@ function view(){
   if(UI.tab==='projects')return UI.pid&&P(UI.pid)?projectView(P(UI.pid)):projectList();
   if(UI.tab==='finance')return financeView();
   if(UI.tab==='orders')return ordsView();
+  if(UI.tab==='subs')return subsView();
+  if(UI.tab==='courier')return courierView();
   if(UI.tab==='strategy')return strategyView();
   return archiveView()}
 function welcome(){return '<div class="card"><h2>Xoş gəlmisiniz</h2><p class="muted">Hələ layihə yoxdur. Hazır başlanğıc məlumatı faylını yükləyə və ya boş başlaya bilərsiniz.</p>'+
@@ -358,7 +361,7 @@ function financeView(){var r=period(),f=r[0],t=r[1];var ps=sortedProjects(true);
   h+=finForm('');
   h+='<div class="card"><h2>Layihələr üzrə</h2><div class="tbl"><table><thead><tr><th>Layihə</th><th class="r">Gəlir</th><th class="r">Xərc</th><th class="r">Abunə</th><th class="r">Xalis</th></tr></thead><tbody>'+
    ps.map(function(p){var x=finSum(f,t,p.id);var c=toolCost(p,f,t);return '<tr><td><span class="dot" style="--pc:'+p.color+';display:inline-block;margin-right:6px"></span>'+esc(p.name)+'</td><td class="r num">'+money(x.i)+'</td><td class="r num">'+money(x.o)+'</td><td class="r num">'+money(c)+'</td><td class="r num"><b>'+money(x.i-x.o-c)+'</b></td></tr>'}).join('')+
-   '<tr><td><b>Cəmi</b></td><td class="r num"><b>'+money(tot.i)+'</b></td><td class="r num"><b>'+money(tot.o)+'</b></td><td class="r num"><b>'+money(tc)+'</b></td><td class="r num"><b>'+money(tot.i-tot.o-tc)+'</b></td></tr></tbody></table></div></div>';
+   noProjRow(f,t)+'<tr><td><b>Cəmi</b></td><td class="r num"><b>'+money(tot.i)+'</b></td><td class="r num"><b>'+money(tot.o)+'</b></td><td class="r num"><b>'+money(tc)+'</b></td><td class="r num"><b>'+money(tot.i-tot.o-tc)+'</b></td></tr></tbody></table></div></div>';
   h+='<div class="card"><h2>Gündəlik cədvəl</h2><div class="small muted">Qeyd olunmayan günlər avtomatik 0 / 0 görünür.</div><div class="tbl"><table><thead><tr><th>Gün</th><th class="r">Gəlir</th><th class="r">Xərc</th><th class="r">Abunə</th><th class="r">Xalis</th></tr></thead><tbody>';
   var n=0,d=t;while(d>=f&&n<400){var x=finSum(d,d);var c=toolCostAll(d,d);var z=!x.i&&!x.o;
     h+='<tr class="'+(z?'zero':'')+'"><td>'+short(d)+' · '+DAYS[pd(d).getDay()].slice(0,3)+'</td><td class="r num">'+money(x.i)+'</td><td class="r num">'+money(x.o)+'</td><td class="r num">'+money(c)+'</td><td class="r num">'+money(x.i-x.o-c)+'</td></tr>';d=addDays(d,-1);n++}
@@ -451,9 +454,9 @@ function ordPaid(o){var s=0;S.fin.forEach(function(e){if(e.oid===o.id&&e.type===
 function ordOpen(o){return o.status!=='Çatdırıldı'&&o.status!=='Ləğv'}
 function ordRest(o){return o.status==='Ləğv'?0:Math.max(0,o.price-ordPaid(o))}
 function waLink(p){var d=String(p||'').replace(/\D/g,'');if(!d)return '';if(d.charAt(0)==='0')d='994'+d.slice(1);else if(d.length===9)d='994'+d;return 'https://wa.me/'+d}
-function ordsView(){var t=today(),ms=t.slice(0,8)+'01';var rest=0,op=0,late=0,sale=0;
+function ordsView(){if(UI.otab==='extra')return '<h2 style="font-size:20px">Sifarişlər</h2>'+otabBar()+extraView();var t=today(),ms=t.slice(0,8)+'01';var rest=0,op=0,late=0,sale=0;
   S.orders.forEach(function(o){if(ordOpen(o))op++;rest+=ordRest(o);if(ordOpen(o)&&o.due&&o.due<t)late++;if(o.status!=='Ləğv'&&o.date>=ms)sale+=o.price});
-  var h='<h2 style="font-size:20px">Sifarişlər</h2><div class="grid g4"><div class="stat"><span>Açıq sifariş</span><b class="num">'+op+'</b></div><div class="stat"><span>Gecikən</span><b class="num bad">'+late+'</b></div><div class="stat"><span>Qalıq borc</span><b class="num warn">'+money(rest)+'</b></div><div class="stat"><span>Bu ay satış</span><b class="num good">'+money(sale)+'</b></div></div>';
+  var h='<h2 style="font-size:20px">Sifarişlər</h2>'+otabBar()+'<div class="grid g4"><div class="stat"><span>Açıq sifariş</span><b class="num">'+op+'</b></div><div class="stat"><span>Gecikən</span><b class="num bad">'+late+'</b></div><div class="stat"><span>Qalıq borc</span><b class="num warn">'+money(rest)+'</b></div><div class="stat"><span>Bu ay satış</span><b class="num good">'+money(sale)+'</b></div></div>';
   var ps=sortedProjects(true).filter(function(p){return !p.archived});
   h+='<div class="card"><h2>Yeni sifariş</h2><div class="grid g2" style="margin-top:8px"><label class="f">Müştəri<input type="text" id="or-c"></label><label class="f">Telefon<input type="text" id="or-ph" inputmode="tel" placeholder="050 000 00 00"></label><label class="f">Məhsul<input type="text" id="or-i"></label><label class="f">Layihə<select id="or-p">'+ps.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('')+'</select></label><label class="f">Qiymət, ₼<input type="number" id="or-pr" inputmode="decimal" step="0.01" min="0"></label><label class="f">Avans, ₼<input type="number" id="or-adv" inputmode="decimal" step="0.01" min="0"></label><label class="f">Çatdırılma tarixi<input type="date" id="or-due"></label></div><div class="row" style="margin-top:10px"><button class="btn p" data-act="addord">Sifariş əlavə et</button></div>'+(UI.omsg?'<p class="small bad">'+esc(UI.omsg)+'</p>':'')+'</div>';
   var fl=[['','Aktiv'],['all','Hamısı']].concat(OST.map(function(s){return [s,s]}));
@@ -478,6 +481,66 @@ function bkBanner(){var d=lsGet('crm_last_bk');var n=d?diffDays(d,today()):999;i
 function doCsv(){var q=function(s){return '"'+String(s==null?'':s).replace(/"/g,'""')+'"'};
   var rows=[['Tarix','Layihə','Növ','Məbləğ','Qeyd','Sifariş','Kateqoriya']];S.fin.slice().sort(function(a,b){return a.date<b.date?-1:1}).forEach(function(e){var o=e.oid?ordOf(e.oid):null;rows.push([e.date,pname(e.pid),e.type==='in'?'Gəlir':'Xərc',String(e.amount).replace('.',','),e.note||'',o?o.client:'',e.cat||''])});
   var b=new Blob(['\ufeff'+rows.map(function(r){return r.map(q).join(';')}).join('\r\n')],{type:'text/csv;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='maliyye-'+today()+'.csv';document.body.appendChild(a);a.click();a.remove()}
+
+/* ---------- Əlavə gəlir (Sifarişlər daxilində), Abunəliklər, Kuryerlik ---------- */
+function projOpts(sel){return '<option value="">— Layihəsiz —</option>'+sortedProjects(true).filter(function(p){return !p.archived}).map(function(p){return '<option value="'+p.id+'"'+(sel===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')}
+function addFinX(pid,type,amount,note,date,extra){if(!addFin(pid,type,amount,note,date))return false;var e=S.fin[S.fin.length-1];for(var k in extra)e[k]=extra[k];save();return true}
+function noProjRow(f,t){var i=0,o=0;S.fin.forEach(function(e){if(e.pid&&P(e.pid))return;if(!inRange(e.date,f,t))return;if(e.type==='in')i+=e.amount;else o+=e.amount});if(!i&&!o)return '';
+  return '<tr><td><span class="dot" style="--pc:#64748b;display:inline-block;margin-right:6px"></span>Layihəsiz (kuryerlik, əlavə gəlir)</td><td class="r num">'+money(i)+'</td><td class="r num">'+money(o)+'</td><td class="r num">'+money(0)+'</td><td class="r num"><b>'+money(i-o)+'</b></td></tr>'}
+function otabBar(){var o=UI.otab||'ord';return '<div class="sub"><button data-act="otab" data-v="ord" class="'+(o==='ord'?'on':'')+'">Sifarişlər</button><button data-act="otab" data-v="extra" class="'+(o==='extra'?'on':'')+'">Əlavə gəlir</button></div>'}
+
+/* Əlavə gəlir: sifarişə bağlı olmayan birdəfəlik gəlirlər */
+function extraSum(f,t){var s=0;S.fin.forEach(function(e){if(e.extra&&e.type==='in'&&inRange(e.date,f,t))s+=e.amount});return s}
+function extraView(){var t=today(),ms=t.slice(0,8)+'01',all=0,n=0;
+  S.fin.forEach(function(e){if(e.extra&&e.type==='in'){all+=e.amount;n++}});
+  var list=S.fin.filter(function(e){return e.extra}).sort(function(a,b){return a.date===b.date?(b.ts||0)-(a.ts||0):(a.date<b.date?1:-1)});
+  var h='<div class="grid g4"><div class="stat"><span>Bu ay</span><b class="num good">'+money(extraSum(ms,t))+'</b></div><div class="stat"><span>Son 7 gün</span><b class="num good">'+money(extraSum(addDays(t,-6),t))+'</b></div><div class="stat"><span>Cəmi</span><b class="num">'+money(all)+'</b></div><div class="stat"><span>Qeyd sayı</span><b class="num">'+n+'</b></div></div>';
+  h+='<div class="card"><h2>Yeni əlavə gəlir</h2><div class="small muted">Sifarişə bağlı olmayan gəlirlər (bonus, təsadüfi satış, komissiya və s.). Maliyyə bölməsinin gəlirinə avtomatik əlavə olunur.</div><div class="grid g2" style="margin-top:8px"><label class="f">Mənbə / qeyd<input type="text" id="ex-n" placeholder="Məs: komissiya, bonus"></label><label class="f">Məbləğ, ₼<input type="number" id="ex-a" inputmode="decimal" step="0.01" min="0" data-enter="addextra"></label><label class="f">Tarix<input type="date" id="ex-d" value="'+t+'"></label><label class="f">Layihə<select id="ex-p">'+projOpts('')+'</select></label></div><div class="row" style="margin-top:10px"><button class="btn p" data-act="addextra">Əlavə et</button></div>'+(UI.xmsg?'<p class="small bad">'+esc(UI.xmsg)+'</p>':'')+'</div>';
+  h+='<div class="card"><h2>Hərəkətlər</h2>'+(list.map(function(e){return '<div class="item"><div class="d">'+short(e.date)+'</div><div class="b"><b class="num good">+'+money(e.amount)+'</b> '+esc(e.note||'')+(e.pid&&P(e.pid)?' <span class="small muted">· '+esc(pname(e.pid))+'</span>':'')+'</div><div class="tact"><button data-act="delfin" data-id="'+e.id+'" aria-label="Sil">✕</button></div></div>'}).join('')||'<div class="empty">Hələ əlavə gəlir yoxdur.</div>')+'</div>';
+  return h}
+function addExtra(){var a=num(val('ex-a')),nt=val('ex-n').trim()||'Əlavə gəlir';
+  if(!(a>0)){UI.xmsg='Məbləğ yazın.';return}UI.xmsg='';
+  if(addFinX(val('ex-p'),'in',a,nt,val('ex-d')||today(),{cat:'Əlavə gəlir',extra:true}))UI.focus='ex-n'}
+
+/* Abunəliklər: müştərilərdən aylıq təkrarlanan gəlir */
+function subOf(id){return S.subs.filter(function(x){return x.id===id})[0]}
+function subPaidMonth(s,m){var x=0;S.fin.forEach(function(e){if(e.sid===s.id&&e.type==='in'&&e.date.slice(0,7)===m)x+=e.amount});return x}
+function subPaidAll(s){var x=0;S.fin.forEach(function(e){if(e.sid===s.id&&e.type==='in')x+=e.amount});return x}
+function subStats(){var m=today().slice(0,7),n=0,mrr=0,got=0,wait=0;S.subs.forEach(function(s){if(!s.active)return;n++;mrr+=s.price;var p=subPaidMonth(s,m);got+=p;wait+=Math.max(0,s.price-p)});return {n:n,mrr:mrr,got:got,wait:wait}}
+function subsView(){var m=today().slice(0,7),st=subStats(),all=0;S.fin.forEach(function(e){if(e.sid&&e.type==='in')all+=e.amount});
+  var h='<h2 style="font-size:20px">Abunəliklər</h2><div class="small muted">Müştərilərdən aldığınız aylıq abunəlik gəliri (stoksuz satış modeli). Öz alət xərcləriniz Maliyyə → Abunələr bölməsindədir.</div>';
+  h+='<div class="grid g4"><div class="stat"><span>Aktiv abunəçi</span><b class="num">'+st.n+'</b></div><div class="stat"><span>Aylıq gəlir</span><b class="num good">'+money(st.mrr)+'</b></div><div class="stat"><span>Bu ay yığılıb</span><b class="num good">'+money(st.got)+'</b></div><div class="stat"><span>Bu ay gözlənilən</span><b class="num warn">'+money(st.wait)+'</b></div></div>';
+  h+='<div class="card"><h2>Yeni abunəçi</h2><div class="grid g2" style="margin-top:8px"><label class="f">Müştəri<input type="text" id="sb-c"></label><label class="f">Telefon<input type="text" id="sb-ph" inputmode="tel" placeholder="050 000 00 00"></label><label class="f">Plan / xidmət<input type="text" id="sb-pl" placeholder="Məs: aylıq paket"></label><label class="f">Layihə<select id="sb-p">'+projOpts('')+'</select></label><label class="f">Aylıq qiymət, ₼<input type="number" id="sb-pr" inputmode="decimal" step="0.01" min="0" data-enter="addsub"></label><label class="f">Başlama tarixi<input type="date" id="sb-d" value="'+today()+'"></label></div><div class="row" style="margin-top:10px"><button class="btn p" data-act="addsub">Abunəçi əlavə et</button></div>'+(UI.smsg?'<p class="small bad">'+esc(UI.smsg)+'</p>':'')+'</div>';
+  var list=S.subs.slice().sort(function(a,b){return a.active===b.active?(a.since<b.since?-1:1):(a.active?-1:1)});
+  h+=list.map(function(s){var paid=subPaidMonth(s,m),rest=Math.max(0,s.price-paid),wa=waLink(s.phone);
+    return '<div class="card pc" style="--pc:'+(s.active?pcolor(s.pid):'#64748b')+(s.active?'':';opacity:.65')+'"><div class="row"><b class="grow">'+esc(s.client)+'</b><span class="chip '+(s.active&&rest?'bad':'')+'">'+(!s.active?'Dayandırılıb':(rest?'Gözləyir':'Bu ay ödənilib'))+'</span></div>'+
+    '<div class="small muted">'+esc(s.plan||'Abunəlik')+(s.pid&&P(s.pid)?' · '+esc(pname(s.pid)):'')+' · '+short(s.since)+' tarixindən'+(s.phone?' · '+esc(s.phone):'')+(wa?' · <a href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>':'')+'</div>'+
+    '<div class="row small" style="margin-top:8px"><span>Aylıq <b class="num">'+money(s.price)+'</b></span><span class="good num">Bu ay '+money(paid)+'</span>'+(s.active?'<span class="'+(rest?'bad':'good')+' num">Qalıq '+money(rest)+'</span>':'')+'<span class="muted num">Cəmi '+money(subPaidAll(s))+'</span></div>'+
+    '<div class="addrow">'+(s.active?'<input type="number" id="sp-'+s.id+'" inputmode="decimal" step="0.01" min="0" placeholder="'+(rest?money(rest):'Məbləğ, ₼')+'"><button class="btn p" data-act="subpay" data-id="'+s.id+'">Ödəniş yaz</button>':'')+'<button class="btn" data-act="subtog2" data-id="'+s.id+'">'+(s.active?'Dayandır':'Davam et')+'</button><button class="btn sm danger" data-act="delsub" data-id="'+s.id+'">'+(UI.confirm==='sb'+s.id?'Əminsiniz?':'Sil')+'</button></div></div>'}).join('')||'<div class="card empty">Hələ abunəçi yoxdur. Stoksuz satış modeli işə düşəndə müştəriləri burada izləyin.</div>';
+  if(S.subs.length)h+='<div class="small muted">Ümumi abunəlikdən yığılan: <b class="num good">'+money(all)+'</b>. Abunəçini silsəniz, əvvəl yazılmış ödənişlər Maliyyədə qalır.</div>';
+  return h}
+function addSub(){var c=val('sb-c').trim(),pr=num(val('sb-pr'));
+  if(!c||!(pr>0)){UI.smsg='Müştəri adı və aylıq qiymət mütləqdir.';return}UI.smsg='';
+  S.subs.push({id:uid(),pid:val('sb-p'),client:c,phone:val('sb-ph').trim(),plan:val('sb-pl').trim(),price:pr,since:val('sb-d')||today(),active:true,until:'',ts:Date.now()});save()}
+function subPay(id){var s=subOf(id);if(!s)return;var m=today().slice(0,7);var a=num(val('sp-'+id));if(!(a>0))a=Math.max(0,s.price-subPaidMonth(s,m));
+  if(!(a>0)){UI.smsg='';alert('Bu ay tam ödənilib. Əlavə ödəniş üçün məbləği özünüz yazın.');return}
+  addFinX(s.pid,'in',a,'Abunəlik: '+s.client+(s.plan?' · '+s.plan:''),today(),{cat:'Abunəlik gəliri',sid:s.id})}
+
+/* Kuryerlik: gündəlik çatdırılma gəliri */
+function courSum(f,t){var i=0,o=0,n=0;S.courier.forEach(function(c){if(inRange(c.date,f,t)){i+=c.fee;o+=c.cost||0;n+=c.count||1}});return {i:i,o:o,n:n}}
+function courierView(){var t=today(),ms=t.slice(0,8)+'01',d=courSum(t,t),w=courSum(addDays(t,-6),t),m=courSum(ms,t);
+  var h='<h2 style="font-size:20px">Kuryerlik</h2><div class="small muted">Kuryerlikdən gəlir. Hər qeyd Maliyyədə avtomatik gəlir (və varsa xərc) kimi yazılır.</div>';
+  h+='<div class="grid g4"><div class="stat"><span>Bu gün</span><b class="num good">'+money(d.i)+'</b><span>'+d.n+' çatdırılma</span></div><div class="stat"><span>Son 7 gün</span><b class="num good">'+money(w.i)+'</b><span>'+w.n+' çatdırılma</span></div><div class="stat"><span>Bu ay gəlir</span><b class="num good">'+money(m.i)+'</b><span>'+m.n+' çatdırılma</span></div><div class="stat"><span>Bu ay xalis</span><b class="num">'+money(m.i-m.o)+'</b><span>orta '+money(m.n?m.i/m.n:0)+' / çatdırılma</span></div></div>';
+  h+='<div class="card"><h2>Yeni qeyd</h2><div class="grid g2" style="margin-top:8px"><label class="f">Tarix<input type="date" id="cr-d" value="'+t+'"></label><label class="f">Çatdırılma sayı<input type="number" id="cr-n" inputmode="numeric" min="1" value="1"></label><label class="f">Gəlir (cəmi), ₼<input type="number" id="cr-f" inputmode="decimal" step="0.01" min="0"></label><label class="f">Xərc (yanacaq və s.), ₼<input type="number" id="cr-c" inputmode="decimal" step="0.01" min="0"></label><label class="f" style="grid-column:1/-1">Qeyd (şirkət, məkan)<input type="text" id="cr-t" data-enter="addcour"></label></div><div class="row" style="margin-top:10px"><button class="btn p" data-act="addcour">Əlavə et</button></div>'+(UI.cmsg?'<p class="small bad">'+esc(UI.cmsg)+'</p>':'')+'</div>';
+  var list=S.courier.slice().sort(function(a,b){return a.date===b.date?(b.ts||0)-(a.ts||0):(a.date<b.date?1:-1)}).slice(0,60);
+  h+='<div class="card"><h2>Son qeydlər</h2>'+(list.map(function(c){return '<div class="item"><div class="d">'+short(c.date)+'</div><div class="b"><b class="num good">+'+money(c.fee)+'</b> · '+(c.count||1)+' çatdırılma'+(c.cost?' <span class="chip">xərc '+money(c.cost)+'</span>':'')+(c.note?' <span class="small muted">· '+esc(c.note)+'</span>':'')+'</div><div class="tact"><button data-act="delcour" data-id="'+c.id+'" aria-label="Sil">'+(UI.confirm==='cr'+c.id?'Əminsiniz?':'✕')+'</button></div></div>'}).join('')||'<div class="empty">Hələ kuryerlik qeydi yoxdur.</div>')+'</div>';
+  return h}
+function addCour(){var f=num(val('cr-f')),cost=num(val('cr-c')),n=Math.max(1,Math.round(num(val('cr-n')))||1),dt=val('cr-d')||today(),nt=val('cr-t').trim();
+  if(!(f>0)){UI.cmsg='Gəlir məbləğini yazın.';return}UI.cmsg='';
+  var id=uid();S.courier.push({id:id,date:dt,count:n,fee:f,cost:cost>0?cost:0,note:nt,ts:Date.now()});
+  addFinX('', 'in',f,'Kuryerlik'+(nt?': '+nt:'')+' ('+n+' çatd.)',dt,{cat:'Kuryerlik',cid:id});
+  if(cost>0)addFinX('','out',cost,'Kuryerlik xərci'+(nt?': '+nt:''),dt,{cat:'Çatdırılma',cid:id});
+  save();UI.focus='cr-f'}
 
 /* ---------- Claude köməkçi ---------- */
 async function askClaude(mode,text){if(!sb||!session)throw new Error('Əvvəl ⚙ Ayarlar-da Supabase-ə giriş edin.');
@@ -545,6 +608,9 @@ function buildReport(){
   var oo=S.orders.filter(ordOpen),rs=0;S.orders.forEach(function(o){rs+=ordRest(o)});
   L.push('');L.push('SİFARİŞLƏR: açıq '+oo.length+', qalıq borc '+money(rs)+', dövrdə yeni '+S.orders.filter(function(o){return inR(o.date)}).length);
   oo.sort(function(a,b){return (a.due||'9')<(b.due||'9')?-1:1}).slice(0,8).forEach(function(o){L.push('  ○ '+clip(o.client,30)+' · '+clip(o.item,40)+' ['+o.status+'] qalıq '+money(ordRest(o))+(o.due?' · çatdırılma '+short(o.due):''));if(o.due&&o.due<t)stuck.push('Sifariş '+clip(o.client,30)+': çatdırılma '+diffDays(o.due,t)+' gün gecikib')});
+  var sm=subStats(),cs=courSum(f,t),xs=extraSum(f,t);
+  L.push('');L.push('ABUNƏLİKLƏR (gəlir): aktiv '+sm.n+', aylıq '+money(sm.mrr)+', bu ay yığılıb '+money(sm.got)+', gözlənilən '+money(sm.wait));
+  L.push('KURYERLİK: dövrdə '+cs.n+' çatdırılma, gəlir '+money(cs.i)+', xərc '+money(cs.o)+' · ƏLAVƏ GƏLİR: '+money(xs));
   L.push('');L.push('İLİŞƏN İŞLƏR');
   if(stuck.length)stuck.forEach(function(s){L.push('! '+s)});else L.push('Görünən ilişən iş yoxdur.');
   if(S.note&&S.note.trim()){L.push('');L.push('Strategiya qeydi: '+clip(S.note,300))}
@@ -591,7 +657,7 @@ function bind(t){var p=t.dataset.bind.split('|');var v=t.value;
   else if(p[0]==='sec'){var pr2=P(p[1]);if(pr2&&pr2.sections[+p[2]])pr2.sections[+p[2]][p[3]]=v}
   else if(p[0]==='sc'){var pr3=P(p[1]);if(pr3)pr3.sc[p[2]]=(p[2]==='bud'&&v==='')?'':num(v)}}
 function readFile(f){if(!f)return;var r=new FileReader();r.onload=function(){try{var d=norm(JSON.parse(r.result));if(!d.projects.length&&!d.tasks.length)throw new Error('boş');S=d;if(!S.updatedAt)S.updatedAt=1;save();UI.modal=false;UI.tab='today';UI.pid=null;render()}catch(err){UI.msg='Fayl oxunmadı: düzgün CRM JSON faylı seçin.';render()}};r.readAsText(f)}
-function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;var DEL=/^(deltask|dellog|delfin|delproj|delord|delsec|tooldel|dellink|recdel|subdel)$/.test(a);if(DEL)UNDO=JSON.stringify(S);
+function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;var DEL=/^(deltask|dellog|delfin|delproj|delord|delsec|tooldel|dellink|recdel|subdel|delsub|delcour)$/.test(a);if(DEL)UNDO=JSON.stringify(S);
   switch(a){
   case 'tab':UI.tab=v;UI.pid=null;UI.edit=null;window.scrollTo(0,0);break;
   case 'open':UI.pid=id;UI.ptab='tasks';UI.tab='projects';window.scrollTo(0,0);break;
@@ -651,6 +717,14 @@ function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;var DEL=/^(del
   case 'addord':addOrder();break;
   case 'addpay':addPay(id);break;
   case 'delord':if(ask('o'+id)){S.orders=S.orders.filter(function(x){return x.id!==id});S.fin=S.fin.filter(function(x){return x.oid!==id});save()}break;
+  case 'otab':UI.otab=v;break;
+  case 'addextra':addExtra();break;
+  case 'addsub':addSub();break;
+  case 'subpay':subPay(id);break;
+  case 'subtog2':var sx=subOf(id);if(sx){sx.active=!sx.active;sx.until=sx.active?'':today();save()}break;
+  case 'delsub':if(ask('sb'+id)){S.subs=S.subs.filter(function(x){return x.id!==id});save()}break;
+  case 'addcour':addCour();break;
+  case 'delcour':if(ask('cr'+id)){S.courier=S.courier.filter(function(x){return x.id!==id});S.fin=S.fin.filter(function(x){return x.cid!==id});save()}break;
   case 'csv':doCsv();re=false;break;
   case 'repdays':UI.rd=+v;UI.report=buildReport();break;
   case 'report':UI.report=buildReport();UI.modal='report';UI.msg='';break;
