@@ -562,7 +562,7 @@ function dayCard(title,s){var d=sd(),wk=wkOf(s),dw=pd(s).getDay();
  return h+'</div>'}
 function f1(n){return String(Math.round(n*10)/10).replace('.',',')}
 function avg(a){return a.length?a.reduce(function(x,y){return x+y},0)/a.length:0}
-function att(c){if(c.ab!=='')return +c.ab;var h=+c.hours;if(!h)return null;var q=c.qb;if(q>Math.floor(h/8))return null;var p=q/(h/2);return p<=0.05+1e-9?10:p<=0.10+1e-9?9:8}
+function att(c){if(c.ab!=='')return +c.ab;var h=+c.hours;if(!h)return null;var q=c.qb;if(q>Math.floor(h/8))return null;return Math.round(Math.max(0,10*(1-q/(h/2)))*100)/100}
 function semScore(c){var sa=avg(c.sm),ka=avg(c.kl),a=att(c),est=c.sf===''&&c.sg.length>0,sr=c.sf!==''?+c.sf:avg(c.sg),base=(sa*0.4+ka*0.6)*3;return {sa:sa,ka:ka,a:a,sr:sr,est:est,base:base,tot:base+(a||0)+sr}}
 function gBlock(c,k,lb,hint){return '<h3 style="font-size:14px;margin-top:10px">'+lb+' <span class="small muted">'+hint+'</span></h3><div>'+c[k].map(function(x,i){return '<span class="chip">'+f1(x)+' <button data-act="gdel" data-id="'+c.id+'" data-k="'+k+'" data-i="'+i+'">✕</button></span> '}).join('')+'</div><div class="addrow"><input type="number" id="g-'+k+'-'+c.id+'" min="0" max="10" step="0.5" placeholder="0–10" style="max-width:90px"><button class="btn" data-act="gadd" data-id="'+c.id+'" data-k="'+k+'">+</button></div>'}
 function studyView(){var d=sd(),h='<h2 style="font-size:20px">Dərslər</h2>'+dayCard('Sabaha plan',addDays(today(),1))+dayCard('Bu gün',today());
