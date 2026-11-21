@@ -604,7 +604,7 @@ function xact(a,t,e){var id=t.dataset.id,i=+t.dataset.i,c=id&&CO(id);
  case 'radd':var x=val('rt-'+id).trim();if(x){c.r.push({t:x,due:val('rd-'+id),d:false});save()}break;
  case 'rtog':c.r[i].d=!c.r[i].d;save();break;
  case 'rdel':c.r.splice(i,1);save();break;
- case 'getf':var f=fileOf(id);if(f&&sb)sb.storage.from('files').createSignedUrl(f.path,120).then(function(r){if(r.data)dl(r.data.signedUrl)});return false;
+ case 'getf':var f=fileOf(id);if(!f)return false;if(!sb||!session){alert('Əvvəl ⚙ Ayarlar-dan Supabase-ə giriş edin.');return false}sb.storage.from('files').createSignedUrl(f.path,300).then(function(r){if(r.data&&r.data.signedUrl)location.href=r.data.signedUrl;else alert('Fayl açıla bilmədi: '+(r.error?r.error.message:''))});return false;
  case 'delf':var f2=fileOf(id);if(f2&&confirm('Fayl silinsin?')){if(sb)sb.storage.from('files').remove([f2.path]);S.files=S.files.filter(function(x){return x.id!==id});save()}break;
  case 'zip':doZip();return false}}
 var _tr=taskRow;taskRow=function(t,full){return _tr(t,full)+(full?'<div style="margin:-4px 0 8px 44px">'+filesBox('t',t.id)+'</div>':'')};
