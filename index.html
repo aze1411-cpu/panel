@@ -214,7 +214,7 @@ function newProject(){var n=S.projects.length;var p={id:uid(),name:'Yeni layihə
 function ask(key){if(UI.confirm===key){UI.confirm=null;return true}UI.confirm=key;return false}
 
 /* ---------- render ---------- */
-var TABS=[['today','Bu gün'],['projects','Layihələr'],['finance','Maliyyə'],['orders','Sifarişlər'],['subs','Abunəliklər'],['courier','Kuryerlik'],['strategy','Strategiya'],['archive','Arxiv']];
+var TABS=[['today','Bu gün'],['projects','Layihələr'],['finance','Maliyyə'],['orders','Sifarişlər'],['subs','Abunəliklər'],['courier','Kuryerlik'],['study','Dərslər'],['strategy','Strategiya'],['archive','Arxiv']];
 function render(){
   var sy=window.scrollY;var app=el('app');
   if(LOCK){app.innerHTML='<div class="card" style="max-width:320px;margin:20vh auto"><h2>🔒 Mənim CRM</h2><input type="password" id="pin-i" inputmode="numeric" data-enter="unlock" placeholder="PIN" style="margin-top:10px">'+(UI.pinErr?'<p class="small bad">Yanlış PIN</p>':'')+'<div class="row" style="margin-top:10px"><button class="btn p" data-act="unlock">Aç</button></div></div>';el('modal').hidden=true;return}
@@ -237,6 +237,7 @@ function view(){
   if(UI.tab==='orders')return ordsView();
   if(UI.tab==='subs')return subsView();
   if(UI.tab==='courier')return courierView();
+  if(UI.tab==='study')return studyView();
   if(UI.tab==='strategy')return strategyView();
   return archiveView()}
 function welcome(){return '<div class="card"><h2>Xoş gəlmisiniz</h2><p class="muted">Hələ layihə yoxdur. Hazır başlanğıc məlumatı faylını yükləyə və ya boş başlaya bilərsiniz.</p>'+
@@ -542,6 +543,65 @@ function addCour(){var f=num(val('cr-f')),cost=num(val('cr-c')),n=Math.max(1,Mat
   if(cost>0)addFinX('','out',cost,'Kuryerlik xərci'+(nt?': '+nt:''),dt,{cat:'Çatdırılma',cid:id});
   save();UI.focus='cr-f'}
 
+/* ---------- Dərslər + Fayllar + ZIP ---------- */
+var SCH=[[0,1,'08:30','10:05','lab','160','Müşgünaz A.',0],[1,1,'10:15','11:50','mühazirə','463','Xəlil Nağıyev',0],[2,1,'12:00','13:35','lab','299','Səbahiyyə Q.',0],[7,1,'13:50','15:25','seminar','','','u'],[7,1,'13:50','15:25','mühazirə','','','a'],[3,1,'15:35','17:10','seminar','10','Gülnarə D.',0],[4,1,'17:20','18:55','seminar','338','Vüsalə M.','a'],
+[5,2,'08:30','10:05','mühazirə','346','Eldar Əhmədov',0],[5,2,'10:15','11:50','lab','367','Səkinə M.',0],[5,2,'12:00','13:35','lab','367','Səkinə M.','a'],[0,2,'12:00','13:35','lab','175','Müşgünaz A.','u'],[6,2,'15:35','17:10','lab','289','Minayə M.',0],[6,2,'17:20','18:55','lab','289','Minayə M.','a'],
+[0,4,'08:30','10:05','mühazirə','346','Farid N.',0],[6,4,'13:50','15:25','mühazirə','346','Polad M.',0],[4,4,'15:35','17:10','mühazirə','16','Vüsalə M.','u'],
+[2,5,'08:30','10:05','mühazirə','381','Abdülsəid Ə.',0],[1,5,'12:00','13:35','seminar','2','Aytən S.',0],[3,5,'15:35','17:10','mühazirə','15','Gülnarə D.','u']];
+var CN=['Üzvi kimya-2','Kimyada məsələ həlli','YMB kimyası','Kim. nəzəri əsasların tədrisi','Məktəbdə analiz metodlarının tədrisi','Fiziki və kolloid kimya-1','Analitik kimya-1','Etika və estetika'];
+function sd(){if(!S.study){S.study={ref:'2026-11-23',c:CN.map(function(n,i){return {id:'c'+i,name:n,hours:'',qb:0,g:[],r:[]}}),sch:SCH.map(function(r){return {c:'c'+r[0],d:r[1],s:r[2],e:r[3],ty:r[4],rm:r[5],th:r[6],w:r[7]}})}}return S.study}
+function qlim(h){h=+h;var T=[[120,15],[105,13],[90,11],[75,9],[60,7],[45,5],[30,3]];for(var i=0;i<7;i++)if(h>=T[i][0])return T[i][1];return h?0:null}
+function wkOf(s){var n=(pd(s).getDay()+6)%7,k=Math.floor(diffDays(sd().ref,addDays(s,-n))/7);return ((k%2)+2)%2===0?'u':'a'}
+function CO(id){return sd().c.filter(function(c){return c.id===id})[0]}
+function dayCard(title,s){var d=sd(),wk=wkOf(s),dw=pd(s).getDay();
+ var rows=d.sch.filter(function(r){return r.d===dw&&(!r.w||r.w===wk)}).sort(function(a,b){return a.s<b.s?-1:1});
+ var h='<div class="card"><div class="row"><h2 class="grow">'+title+'</h2><span class="small muted">'+human(s)+' · '+DAYS[dw]+' · '+(wk==='u'?'Üst':'Alt')+' həftə</span></div>';
+ h+=rows.length?rows.map(function(r){var c=CO(r.c);return '<div class="item"><div class="d">'+r.s+'</div><div class="b"><b>'+esc(c.name)+'</b> <span class="chip">'+r.ty+'</span> <span class="small muted">'+(r.rm?'otaq '+esc(r.rm)+' · ':'')+esc(r.th)+' · '+r.e+'-ə qədər</span></div></div>'}).join(''):'<p class="muted small">Dərs yoxdur.</p>';
+ var rd=[];d.c.forEach(function(c){c.r.forEach(function(x){if(!x.d&&x.due&&x.due<=addDays(s,2))rd.push([x,c])})});
+ if(rd.length)h+='<h3 style="font-size:14px;margin-top:10px">Oxu / tapşırıq</h3>'+rd.map(function(a){return '<div class="small">• <b>'+esc(a[1].name)+':</b> '+esc(a[0].t)+' <span class="'+(a[0].due<today()?'bad':'muted')+'">('+short(a[0].due)+')</span></div>'}).join('');
+ return h+'</div>'}
+function studyView(){var d=sd(),h='<h2 style="font-size:20px">Dərslər</h2>'+dayCard('Sabaha plan',addDays(today(),1))+dayCard('Bu gün',today());
+ d.c.forEach(function(c){var L=qlim(c.hours),gs=0,gm=0;c.g.forEach(function(x){gs+=x.b;gm+=x.m});var bad=L!=null&&c.qb>=L;
+ h+='<details class="card"><summary><b>'+esc(c.name)+'</b> <span class="chip '+(bad?'bad':'')+'">qb '+c.qb+(L!=null?' / '+L:'')+'</span>'+(gm?' <span class="chip">bal '+gs+'/'+gm+'</span>':'')+'</summary>'+
+ '<div class="addrow" style="margin-top:8px"><input type="number" id="hr-'+c.id+'" placeholder="Ders saatı" value="'+(c.hours||'')+'" style="max-width:120px"><button class="btn" data-act="hrs" data-id="'+c.id+'">Saxla</button><span class="small muted">'+(L!=null?'qb limiti: '+L:'saatı yazın')+'</span></div>'+
+ '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="qbm" data-id="'+c.id+'">−</button><b>qayıb: '+c.qb+'</b><button class="btn sm p" data-act="qbp" data-id="'+c.id+'">+1 qb</button>'+(L!=null?'<span class="small '+(bad?'bad':'muted')+'">'+(bad?'Limit dolub!':'qalıb: '+(L-c.qb))+'</span>':'')+'</div>'+
+ '<h3 style="font-size:14px;margin-top:10px">Qiymətlər</h3>'+c.g.map(function(x,i){return '<div class="small">'+esc(x.n)+': <b>'+x.b+'/'+x.m+'</b> <button data-act="gdel" data-id="'+c.id+'" data-i="'+i+'">✕</button></div>'}).join('')+
+ '<div class="addrow"><input type="text" id="gn-'+c.id+'" placeholder="Ad (kollokvium…)"><input type="number" id="gb-'+c.id+'" placeholder="Bal" style="max-width:70px"><input type="number" id="gm-'+c.id+'" placeholder="Maks" style="max-width:70px"><button class="btn" data-act="gadd" data-id="'+c.id+'">+</button></div>'+
+ '<h3 style="font-size:14px;margin-top:10px">Oxumalı / tapşırıq</h3>'+c.r.map(function(x,i){return '<div class="small" style="display:flex;gap:6px;align-items:center;padding:2px 0"><button class="chk'+(x.d?' on':'')+'" style="width:18px;height:18px;min-width:18px" data-act="rtog" data-id="'+c.id+'" data-i="'+i+'">'+(x.d?'✓':'')+'</button><span class="grow" style="'+(x.d?'text-decoration:line-through;opacity:.6':'')+'">'+esc(x.t)+(x.due?' · '+short(x.due):'')+'</span><button data-act="rdel" data-id="'+c.id+'" data-i="'+i+'">✕</button></div>'}).join('')+
+ '<div class="addrow"><input type="text" id="rt-'+c.id+'" placeholder="Nə oxumalıyam?"><input type="date" id="rd-'+c.id+'" style="max-width:140px"><button class="btn" data-act="radd" data-id="'+c.id+'">+</button></div>'+
+ '<h3 style="font-size:14px;margin-top:10px">Materiallar</h3>'+filesBox('c',c.id)+'</details>'});
+ return h}
+function FL(o,r){S.files=S.files||[];return S.files.filter(function(f){return f.o===o&&f.r===r})}
+function filesBox(o,r){return FL(o,r).map(function(f){return '<div class="small" style="padding:2px 0">📎 <button class="btn sm ghost" data-act="getf" data-id="'+f.id+'">'+esc(f.name)+'</button> <button data-act="delf" data-id="'+f.id+'">✕</button></div>'}).join('')+'<label class="btn sm" style="cursor:pointer;margin-top:4px">📎 Fayl əlavə et<input type="file" data-up="'+o+'|'+r+'" multiple hidden></label>'}
+async function upFile(t){var p=t.dataset.up.split('|');if(!sb||!session){alert('Əvvəl ⚙ Ayarlar-dan Supabase-ə giriş edin.');return}
+ for(var i=0;i<t.files.length;i++){var f=t.files[i];if(f.size>5e7){alert(f.name+': 50 MB-dan böyükdür.');continue}
+  var id=uid(),path=session.user.id+'/'+id+'_'+f.name.replace(/[^\w.\-]+/g,'_'),r=await sb.storage.from('files').upload(path,f);
+  if(r.error){alert('Yüklənmədi: '+r.error.message);continue}S.files=S.files||[];S.files.push({id:id,o:p[0],r:p[1],name:f.name,path:path,at:today()});save()}
+ t.value='';render()}
+function fileOf(id){return (S.files||[]).filter(function(f){return f.id===id})[0]}
+function dl(blob,name){var a=document.createElement('a');a.href=typeof blob==='string'?blob:URL.createObjectURL(blob);a.download=name||'';a.target='_blank';document.body.appendChild(a);a.click();a.remove()}
+function loadJS(u,g){return new Promise(function(res,rej){if(window[g])return res();var s=document.createElement('script');s.src=u;s.onload=res;s.onerror=function(){rej(new Error('Kitabxana yüklənmədi'))};document.head.appendChild(s)})}
+async function doZip(){if(!sb||!session){alert('Əvvəl Supabase-ə giriş edin.');return}
+ try{await loadJS('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js','JSZip');var z=new JSZip(),fs=(S.files||[]).filter(function(f){return f.o==='t'||f.o==='p'}),names=[];
+ for(var i=0;i<fs.length;i++){var f=fs[i],tk=f.o==='t'?S.tasks.filter(function(x){return x.id===f.r})[0]:null,pid=f.o==='p'?f.r:(tk&&tk.pid),r=await sb.storage.from('files').download(f.path);if(r.error)continue;
+  var nm=pname(pid).replace(/[\\\/:*?"<>|]/g,'_')+'/'+(tk?clip(tk.title,25).replace(/[\\\/:*?"<>|]/g,'_')+' - ':'')+f.name;z.file(nm,r.data);names.push(nm)}
+ z.file('hesabat.txt',buildReport()+'\n\nFAYLLAR (bu ZIP-də):\n'+(names.join('\n')||'yoxdur'));
+ dl(await z.generateAsync({type:'blob'}),'claude-hesabat-'+today()+'.zip');UI.msg='ZIP hazırdır: '+names.length+' fayl.'}catch(e){alert('ZIP alınmadı: '+e.message)}render()}
+function xact(a,t,e){var id=t.dataset.id,i=+t.dataset.i,c=id&&CO(id);
+ switch(a){
+ case 'hrs':c.hours=num(val('hr-'+id))||'';save();break;
+ case 'qbp':c.qb++;save();break;
+ case 'qbm':if(c.qb>0)c.qb--;save();break;
+ case 'gadd':var n=val('gn-'+id).trim(),m=num(val('gm-'+id));if(n&&m>0){c.g.push({n:n,b:num(val('gb-'+id)),m:m});save()}break;
+ case 'gdel':c.g.splice(i,1);save();break;
+ case 'radd':var x=val('rt-'+id).trim();if(x){c.r.push({t:x,due:val('rd-'+id),d:false});save()}break;
+ case 'rtog':c.r[i].d=!c.r[i].d;save();break;
+ case 'rdel':c.r.splice(i,1);save();break;
+ case 'getf':var f=fileOf(id);if(f&&sb)sb.storage.from('files').createSignedUrl(f.path,120).then(function(r){if(r.data)dl(r.data.signedUrl)});return false;
+ case 'delf':var f2=fileOf(id);if(f2&&confirm('Fayl silinsin?')){if(sb)sb.storage.from('files').remove([f2.path]);S.files=S.files.filter(function(x){return x.id!==id});save()}break;
+ case 'zip':doZip();return false}}
+var _tr=taskRow;taskRow=function(t,full){return _tr(t,full)+(full?'<div style="margin:-4px 0 8px 44px">'+filesBox('t',t.id)+'</div>':'')};
+var _pn=pnotes;pnotes=function(p){return _pn(p)+'<div class="card"><h2 style="font-size:16px">📎 Fayllar</h2>'+filesBox('p',p.id)+'</div>'};
 /* ---------- Claude köməkçi ---------- */
 async function askClaude(mode,text){if(!sb||!session)throw new Error('Əvvəl ⚙ Ayarlar-da Supabase-ə giriş edin.');
   var r=await sb.functions.invoke('claude',{body:{mode:mode,text:text}});
@@ -616,7 +676,7 @@ function buildReport(){
   if(S.note&&S.note.trim()){L.push('');L.push('Strategiya qeydi: '+clip(S.note,300))}
   return L.join('\n')}
 function reportModal(){return '<div class="modalbg" data-act="closemodal"><div class="modal" data-stop="1"><div class="row"><h2 class="grow">Claude üçün hesabat</h2><button class="btn sm" data-act="closemodal">Bağla</button></div>'+
-  '<p class="small muted">Qısa xülasə (son '+(UI.rd||7)+' gün). Kopyalayıb Claude söhbətinə yapışdırın.</p>'+
+  '<div class="row" style="margin:8px 0"><button class="btn p" data-act="zip">📦 Fayllarla ZIP yüklə</button></div><p class="small muted">Qısa xülasə (son '+(UI.rd||7)+' gün). Kopyalayıb Claude söhbətinə yapışdırın.</p>'+
   '<textarea id="rep-text" readonly style="width:100%;height:46vh;font-size:13px;line-height:1.45">'+esc(UI.report||'')+'</textarea>'+
   '<div class="row" style="margin-top:8px"><button class="btn p" data-act="copyreport">Kopyala</button><button class="btn" data-act="report">Yenilə</button><button class="btn" data-act="repdays" data-v="'+((UI.rd||7)===7?30:7)+'">'+((UI.rd||7)===7?'30 gün':'7 gün')+'</button></div>'+
   (UI.msg?'<p class="small good">'+esc(UI.msg)+'</p>':'')+'</div></div>'}
@@ -647,6 +707,7 @@ document.addEventListener('input',function(e){var t=e.target;if(t.classList&&t.c
   if(t.id==='ar-q'){UI.archQ=t.value;UI.focus='ar-q';render();var q=el('ar-q');if(q)q.setSelectionRange(q.value.length,q.value.length);return}
   if(t.dataset&&t.dataset.bind&&(t.tagName==='TEXTAREA'||t.type==='text')){bind(t);saveQuiet()}});
 document.addEventListener('change',function(e){var t=e.target;
+  if(t.dataset&&t.dataset.up){upFile(t);return}
   if(t.dataset&&t.dataset.file){readFile(t.files[0]);return}
   if(t.dataset&&t.dataset.bind&&!(t.tagName==='TEXTAREA'||t.type==='text')){bind(t);save();render();return}
   var a=t.dataset&&t.dataset.actChange;if(a){if(a==='pfrom')UI.from=t.value;if(a==='pto')UI.to=t.value;if(a==='archp')UI.archPid=t.value;if(a==='archt')UI.archT=t.value;render()}});
@@ -726,6 +787,7 @@ function act(a,t,e){var id=t.dataset.id,v=t.dataset.v;var re=true;var DEL=/^(del
   case 'addcour':addCour();break;
   case 'delcour':if(ask('cr'+id)){S.courier=S.courier.filter(function(x){return x.id!==id});S.fin=S.fin.filter(function(x){return x.cid!==id});save()}break;
   case 'csv':doCsv();re=false;break;
+  default:if(xact(a,t,e)===false)re=false;break;
   case 'repdays':UI.rd=+v;UI.report=buildReport();break;
   case 'report':UI.report=buildReport();UI.modal='report';UI.msg='';break;
   case 'copyreport':copyReport();re=false;break;
