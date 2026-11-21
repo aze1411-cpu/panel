@@ -549,14 +549,17 @@ var SCH=[[0,1,'08:30','10:05','lab','160','Müşgünaz A.',0],[1,1,'10:15','11:5
 [0,4,'08:30','10:05','mühazirə','346','Farid N.',0],[6,4,'13:50','15:25','mühazirə','346','Polad M.',0],[4,4,'15:35','17:10','mühazirə','16','Vüsalə M.','u'],
 [2,5,'08:30','10:05','mühazirə','381','Abdülsəid Ə.',0],[1,5,'12:00','13:35','seminar','2','Aytən S.',0],[3,5,'15:35','17:10','mühazirə','15','Gülnarə D.','u']];
 var CN=['Üzvi kimya-2','Kimyada məsələ həlli','YMB kimyası','Kim. nəzəri əsasların tədrisi','Məktəbdə analiz metodlarının tədrisi','Fiziki və kolloid kimya-1','Analitik kimya-1','Etika və estetika'];
-function sd(){if(!S.study){S.study={ref:'2026-11-23',c:CN.map(function(n,i){return {id:'c'+i,name:n,hours:'',qb:0,g:[],r:[]}}),sch:SCH.map(function(r){return {c:'c'+r[0],d:r[1],s:r[2],e:r[3],ty:r[4],rm:r[5],th:r[6],w:r[7]}})}}S.study.c.forEach(function(c){c.sm=c.sm||[];c.kl=c.kl||[];c.sg=c.sg||[];if(c.sf==null)c.sf='';if(c.ab==null)c.ab=''});return S.study}
+function sd(){if(!S.study){S.study={ref:'2026-11-23',c:CN.map(function(n,i){return {id:'c'+i,name:n,hours:'',qb:0,g:[],r:[]}}),sch:SCH.map(function(r){return {c:'c'+r[0],d:r[1],s:r[2],e:r[3],ty:r[4],rm:r[5],th:r[6],w:r[7]}})}}var st=S.study;if(!st.end)st.end='2026-12-31';if(!st.exFrom)st.exFrom='2027-01-01';if(!st.ns)st.ns='2027-02-15';st.sch.forEach(function(r){if(!r.t)r.t='old'});S.study.c.forEach(function(c){c.sm=c.sm||[];c.kl=c.kl||[];c.sg=c.sg||[];if(c.sf==null)c.sf='';if(c.ab==null)c.ab=''});return S.study}
+function termOf(s){var d=sd();return s<=d.end?'old':s<d.ns?'exam':'new'}
+function rowsOn(s){var d=sd(),tm=termOf(s);if(tm==='exam')return [];var wk=wkOf(s),dw=pd(s).getDay();return d.sch.filter(function(r){return r.t===tm&&r.d===dw&&(!r.w||r.w===wk)}).sort(function(a,b){return a.s<b.s?-1:1})}
 function qlim(h){h=+h;return h?Math.floor(h/8):null}
 function wkOf(s){var n=(pd(s).getDay()+6)%7,k=Math.floor(diffDays(sd().ref,addDays(s,-n))/7);return ((k%2)+2)%2===0?'u':'a'}
 function CO(id){return sd().c.filter(function(c){return c.id===id})[0]}
 function dayCard(title,s){var d=sd(),wk=wkOf(s),dw=pd(s).getDay();
- var rows=d.sch.filter(function(r){return r.d===dw&&(!r.w||r.w===wk)}).sort(function(a,b){return a.s<b.s?-1:1});
+ var rows=rowsOn(s),tm=termOf(s);
  var h='<div class="card"><div class="row"><h2 class="grow">'+title+'</h2><span class="small muted">'+human(s)+' · '+DAYS[dw]+' · '+(wk==='u'?'Üst':'Alt')+' həftə</span></div>';
- h+=rows.length?rows.map(function(r){var c=CO(r.c);return '<div class="item"><div class="d">'+r.s+'</div><div class="b"><b>'+esc(c.name)+'</b> <span class="chip">'+r.ty+'</span> <span class="small muted">'+(r.rm?'otaq '+esc(r.rm)+' · ':'')+esc(r.th)+' · '+r.e+'-ə qədər</span></div></div>'}).join(''):'<p class="muted small">Dərs yoxdur.</p>';
+ if(tm==='exam')h+='<p class="small"><span class="chip warn">İmtahan sessiyası</span> '+short(d.exFrom)+' – '+short(addDays(d.ns,-1))+': dərs yoxdur, imtahanlara hazırlıq.</p>';else if(tm==='new'&&!rows.length)h+='<p class="muted small">Yeni semestr ('+short(d.ns)+'-dən): cədvəl hələ əlavə olunmayıb.</p>';
+ h+=rows.length?rows.map(function(r){var c=CO(r.c);return '<div class="item"><div class="d">'+r.s+'</div><div class="b"><b>'+esc(c.name)+'</b> <span class="chip">'+r.ty+'</span> <span class="small muted">'+(r.rm?'otaq '+esc(r.rm)+' · ':'')+esc(r.th)+' · '+r.e+'-ə qədər</span></div></div>'}).join(''):'<p class="muted small">'+(tm==='old'?'Dərs yoxdur.':'')+'</p>';
  var rd=[];d.c.forEach(function(c){c.r.forEach(function(x){if(!x.d&&x.due&&x.due<=addDays(s,2))rd.push([x,c])})});
  if(rd.length)h+='<h3 style="font-size:14px;margin-top:10px">Oxu / tapşırıq</h3>'+rd.map(function(a){return '<div class="small">• <b>'+esc(a[1].name)+':</b> '+esc(a[0].t)+' <span class="'+(a[0].due<today()?'bad':'muted')+'">('+short(a[0].due)+')</span></div>'}).join('');
  return h+'</div>'}
@@ -571,10 +574,10 @@ function calCard(){var sy=sd(),m=UI.cm||today().slice(0,7),y=+m.slice(0,4),mo=+m
  h='<div class="card"><div class="row"><button class="btn sm" data-act="cm1">‹</button><b class="grow" style="text-align:center">'+MON[mo]+' '+y+'</b><button class="btn sm" data-act="cm2">›</button></div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px;text-align:center">';
  ['B.e','Ç.a','Çər','C.a','Cüm','Şən','Baz'].forEach(function(n){h+='<div class="small muted">'+n+'</div>'});
  for(var i=0;i<off;i++)h+='<div></div>';
- for(var k=1;k<=dim;k++){var ds=y+'-'+('0'+(mo+1)).slice(-2)+'-'+('0'+k).slice(-2),dw=pd(ds).getDay(),wk=wkOf(ds),n=sy.sch.filter(function(r){return r.d===dw&&(!r.w||r.w===wk)}).length,due=sy.c.some(function(c){return c.r.some(function(x){return !x.d&&x.due===ds})});
-  h+='<button class="btn sm'+(UI.sd===ds?' p':'')+'" data-act="cday" data-s="'+ds+'" style="padding:6px 0;line-height:1.1'+(ds===t0?';font-weight:800;text-decoration:underline':'')+'">'+k+'<br><span style="font-size:10px;opacity:.8">'+(n?n+' dərs':'&nbsp;')+(due?' ✎':'')+'</span></button>'}
+ for(var k=1;k<=dim;k++){var ds=y+'-'+('0'+(mo+1)).slice(-2)+'-'+('0'+k).slice(-2),dw=pd(ds).getDay(),wk=wkOf(ds),n=rowsOn(ds).length,tm=termOf(ds),due=sy.c.some(function(c){return c.r.some(function(x){return !x.d&&x.due===ds})});
+  h+='<button class="btn sm'+(UI.sd===ds?' p':'')+'" data-act="cday" data-s="'+ds+'" style="padding:6px 0;line-height:1.1'+(ds===t0?';font-weight:800;text-decoration:underline':'')+'">'+k+'<br><span style="font-size:10px;opacity:.8">'+(n?n+' dərs':tm==='exam'?'imtahan':'&nbsp;')+(due?' ✎':'')+'</span></button>'}
  return h+'</div><div class="small muted" style="margin-top:6px">Günün üstünə basın: o gün hansı dərslər var və nə etməli olduğunuz aşağıda çıxır. ✎ = həmin gün son tarixi olan iş.</div></div>'}
-function studyView(){var d=sd(),h='<h2 style="font-size:20px">Dərslər</h2>'+calCard()+(UI.sd?dayCard('Seçilmiş gün',UI.sd):'')+dayCard('Sabaha plan',addDays(today(),1))+dayCard('Bu gün',today());
+function studyView(){var d=sd(),h='<h2 style="font-size:20px">Dərslər</h2><div class="card"><div class="small muted">Dərslər <b>'+short(d.end)+'</b>-dək · imtahan <b>'+short(d.exFrom)+'</b>-dən · yeni dərslər <b>'+short(d.ns)+'</b>-dən</div><div class="row" style="margin-top:6px"><input type="date" id="te" value="'+d.end+'" style="max-width:150px"><input type="date" id="tn" value="'+d.ns+'" style="max-width:150px"><button class="btn sm" data-act="terms">Saxla</button></div></div>'+calCard()+(UI.sd?dayCard('Seçilmiş gün',UI.sd):'')+dayCard('Sabaha plan',addDays(today(),1))+dayCard('Bu gün',today());
  d.c.forEach(function(c){var L=qlim(c.hours),bar=L!=null&&c.qb>L,r=semScore(c);
  h+='<details class="card"><summary><b>'+esc(c.name)+'</b> <span class="chip '+(bar?'bad':'')+'">qb '+c.qb+(L!=null?' / '+L:'')+'</span> <span class="chip">bal '+f1(r.tot)+' / 50</span></summary>'+
  '<div class="addrow" style="margin-top:8px"><input type="number" id="hr-'+c.id+'" placeholder="Ders saatı" value="'+(c.hours||'')+'" style="max-width:120px"><button class="btn" data-act="hrs" data-id="'+c.id+'">Saxla</button><span class="small muted">'+(L!=null?'qb limiti: '+L:'saatı yazın')+'</span></div>'+
@@ -618,6 +621,7 @@ function xact(a,t,e){var id=t.dataset.id,i=+t.dataset.i,c=id&&CO(id);
  case 'cday':UI.sd=UI.sd===t.dataset.s?'':t.dataset.s;break;
  case 'cm1':mshift(-1);break;
  case 'cm2':mshift(1);break;
+ case 'terms':var te=val('te'),tn=val('tn');if(te&&tn&&te<tn){var d0=sd();d0.end=te;d0.exFrom=addDays(te,1);d0.ns=tn;save()}break;
  case 'zip':doZip();return false}}
 var _tr=taskRow;taskRow=function(t,full){return _tr(t,full)+(full?'<div style="margin:-4px 0 8px 44px">'+filesBox('t',t.id)+'</div>':'')};
 var _pn=pnotes;pnotes=function(p){return _pn(p)+'<div class="card"><h2 style="font-size:16px">📎 Fayllar</h2>'+filesBox('p',p.id)+'</div>'};
