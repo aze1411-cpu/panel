@@ -565,7 +565,16 @@ function avg(a){return a.length?a.reduce(function(x,y){return x+y},0)/a.length:0
 function att(c){if(c.ab!=='')return +c.ab;var h=+c.hours;if(!h)return null;var q=c.qb;if(q>Math.floor(h/8))return null;return Math.round(Math.max(0,10*(1-q/(h/2)))*100)/100}
 function semScore(c){var sa=avg(c.sm),ka=avg(c.kl),a=att(c),est=c.sf===''&&c.sg.length>0,sr=c.sf!==''?+c.sf:avg(c.sg),base=(sa*0.4+ka*0.6)*3;return {sa:sa,ka:ka,a:a,sr:sr,est:est,base:base,tot:base+(a||0)+sr}}
 function gBlock(c,k,lb,hint){return '<h3 style="font-size:14px;margin-top:10px">'+lb+' <span class="small muted">'+hint+'</span></h3><div>'+c[k].map(function(x,i){return '<span class="chip">'+f1(x)+' <button data-act="gdel" data-id="'+c.id+'" data-k="'+k+'" data-i="'+i+'">✕</button></span> '}).join('')+'</div><div class="addrow"><input type="number" id="g-'+k+'-'+c.id+'" min="0" max="10" step="0.5" placeholder="0–10" style="max-width:90px"><button class="btn" data-act="gadd" data-id="'+c.id+'" data-k="'+k+'">+</button></div>'}
-function studyView(){var d=sd(),h='<h2 style="font-size:20px">Dərslər</h2>'+dayCard('Sabaha plan',addDays(today(),1))+dayCard('Bu gün',today());
+var MON=['Yanvar','Fevral','Mart','Aprel','May','İyun','İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr'];
+function mshift(n){var m=UI.cm||today().slice(0,7),x=new Date(+m.slice(0,4),+m.slice(5,7)-1+n,1);UI.cm=x.getFullYear()+'-'+('0'+(x.getMonth()+1)).slice(-2)}
+function calCard(){var sy=sd(),m=UI.cm||today().slice(0,7),y=+m.slice(0,4),mo=+m.slice(5,7)-1,off=(new Date(y,mo,1).getDay()+6)%7,dim=new Date(y,mo+1,0).getDate(),t0=today(),
+ h='<div class="card"><div class="row"><button class="btn sm" data-act="cm1">‹</button><b class="grow" style="text-align:center">'+MON[mo]+' '+y+'</b><button class="btn sm" data-act="cm2">›</button></div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px;text-align:center">';
+ ['B.e','Ç.a','Çər','C.a','Cüm','Şən','Baz'].forEach(function(n){h+='<div class="small muted">'+n+'</div>'});
+ for(var i=0;i<off;i++)h+='<div></div>';
+ for(var k=1;k<=dim;k++){var ds=y+'-'+('0'+(mo+1)).slice(-2)+'-'+('0'+k).slice(-2),dw=pd(ds).getDay(),wk=wkOf(ds),n=sy.sch.filter(function(r){return r.d===dw&&(!r.w||r.w===wk)}).length,due=sy.c.some(function(c){return c.r.some(function(x){return !x.d&&x.due===ds})});
+  h+='<button class="btn sm'+(UI.sd===ds?' p':'')+'" data-act="cday" data-s="'+ds+'" style="padding:6px 0;line-height:1.1'+(ds===t0?';font-weight:800;text-decoration:underline':'')+'">'+k+'<br><span style="font-size:10px;opacity:.8">'+(n?n+' dərs':'&nbsp;')+(due?' ✎':'')+'</span></button>'}
+ return h+'</div><div class="small muted" style="margin-top:6px">Günün üstünə basın: o gün hansı dərslər var və nə etməli olduğunuz aşağıda çıxır. ✎ = həmin gün son tarixi olan iş.</div></div>'}
+function studyView(){var d=sd(),h='<h2 style="font-size:20px">Dərslər</h2>'+calCard()+(UI.sd?dayCard('Seçilmiş gün',UI.sd):'')+dayCard('Sabaha plan',addDays(today(),1))+dayCard('Bu gün',today());
  d.c.forEach(function(c){var L=qlim(c.hours),bar=L!=null&&c.qb>L,r=semScore(c);
  h+='<details class="card"><summary><b>'+esc(c.name)+'</b> <span class="chip '+(bar?'bad':'')+'">qb '+c.qb+(L!=null?' / '+L:'')+'</span> <span class="chip">bal '+f1(r.tot)+' / 50</span></summary>'+
  '<div class="addrow" style="margin-top:8px"><input type="number" id="hr-'+c.id+'" placeholder="Ders saatı" value="'+(c.hours||'')+'" style="max-width:120px"><button class="btn" data-act="hrs" data-id="'+c.id+'">Saxla</button><span class="small muted">'+(L!=null?'qb limiti: '+L:'saatı yazın')+'</span></div>'+
@@ -606,6 +615,9 @@ function xact(a,t,e){var id=t.dataset.id,i=+t.dataset.i,c=id&&CO(id);
  case 'rdel':c.r.splice(i,1);save();break;
  case 'getf':var f=fileOf(id);if(!f)return false;if(!sb||!session){alert('Əvvəl ⚙ Ayarlar-dan Supabase-ə giriş edin.');return false}sb.storage.from('files').createSignedUrl(f.path,300).then(function(r){if(r.data&&r.data.signedUrl)location.href=r.data.signedUrl;else alert('Fayl açıla bilmədi: '+(r.error?r.error.message:''))});return false;
  case 'delf':var f2=fileOf(id);if(f2&&confirm('Fayl silinsin?')){if(sb)sb.storage.from('files').remove([f2.path]);S.files=S.files.filter(function(x){return x.id!==id});save()}break;
+ case 'cday':UI.sd=UI.sd===t.dataset.s?'':t.dataset.s;break;
+ case 'cm1':mshift(-1);break;
+ case 'cm2':mshift(1);break;
  case 'zip':doZip();return false}}
 var _tr=taskRow;taskRow=function(t,full){return _tr(t,full)+(full?'<div style="margin:-4px 0 8px 44px">'+filesBox('t',t.id)+'</div>':'')};
 var _pn=pnotes;pnotes=function(p){return _pn(p)+'<div class="card"><h2 style="font-size:16px">📎 Fayllar</h2>'+filesBox('p',p.id)+'</div>'};
